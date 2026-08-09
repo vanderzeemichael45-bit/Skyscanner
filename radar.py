@@ -5,7 +5,7 @@ import json
 import re
 import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -31,6 +31,9 @@ PAGE_TIMEOUT_MS = 60_000
 
 BASE = "https://www.skyscanner.nl"
 RESULTS_DIR = Path("results")
+DEBUG_DIR = Path("debug")
+VERSION = "0.2"
+BROWSER_CHANNEL = "chromium"
 
 
 @dataclass
@@ -148,9 +151,105 @@ def build_explore_url(airport: str, outbound: date, inbound: date) -> str:
     )
 
 
+def safe_filename(value: str) -> str:
+    value = normalize(value).replace(" ", "-")
+    value = re.sub(r"[^a-z0-9._-]+", "-", value)
+    return value.strip("-._") or "debug"
+
+
+def debug_snapshot(page: Page, label: str, note: str = "") -> None:
+    """Bewaar bewijs van wat de cloudbrowser werkelijk ziet."""
+    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    stem = f"{stamp}_{safe_filename(label)}"
+
+    try:
+        title = page.title()
+    except Exception:
+        title = "<titel niet beschikbaar>"
+
+    diagnostics = {
+        "version": VERSION,
+        "capturedAt": datetime.now().astimezone().isoformat(),
+        "label": label,
+        "note": note,
+        "url": page.url,
+        "title": title,
+        "selectorCounts": {},
+    }
+
+    for name, selector in {
+        "placeCards": '[data-testid="place-card"]',
+        "cityLinks": 'a[data-testid="flights-link"]',
+        "flightDescriptors": '[class*="FlightsTicketA11yDescriptor"]',
+    }.items():
+        try:
+            diagnostics["selectorCounts"][name] = page.locator(selector).count()
+        except Exception:
+            diagnostics["selectorCounts"][name] = None
+
+    try:
+        body_text = page.locator("body").inner_text(timeout=5000)
+    except Exception as exc:
+        body_text = f"<body niet leesbaar: {type(exc).__name__}: {exc}>"
+
+    (DEBUG_DIR / f"{stem}.txt").write_text(
+        json.dumps(diagnostics, ensure_ascii=False, indent=2)
+        + "\n\n===== BODY TEXT =====\n"
+        + body_text[:25_000],
+        encoding="utf-8",
+    )
+
+    try:
+        (DEBUG_DIR / f"{stem}.html").write_text(page.content(), encoding="utf-8")
+    except Exception:
+        pass
+
+    try:
+        page.screenshot(path=str(DEBUG_DIR / f"{stem}.png"), full_page=True)
+    except Exception as exc:
+        print(f"    ! screenshot mislukt: {type(exc).__name__}: {exc}")
+
+    print(
+        "    DEBUG opgeslagen: "
+        f"{stem}.png/.txt/.html | titel={title!r} | "
+        f"selectors={diagnostics['selectorCounts']}"
+    )
+
+
+def dismiss_cookie_banner(page: Page) -> None:
+    """Klik alleen op een normale zichtbare cookieknop als die er is."""
+    labels = [
+        "Alles accepteren",
+        "Alle cookies accepteren",
+        "Accepteren",
+        "Akkoord",
+        "Accept all",
+    ]
+    for label in labels:
+        try:
+            button = page.get_by_role("button", name=re.compile(rf"^{re.escape(label)}$", re.I)).first
+            if button.is_visible(timeout=250):
+                button.click(timeout=1500)
+                page.wait_for_timeout(250)
+                print(f"    cookievenster gesloten via: {label}")
+                return
+        except Exception:
+            continue
+
+
 def goto(page: Page, url: str) -> None:
     print(f"→ {url}")
-    page.goto(url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT_MS)
+    response = None
+    try:
+        response = page.goto(url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT_MS)
+    except PlaywrightTimeoutError:
+        # Een zware SPA kan na de DOM al blijven doorladen. Als er wel een document
+        # staat, laten we de selector-wachters hieronder beslissen of de pagina bruikbaar is.
+        print("    ! navigatie-timeout; document wordt alsnog beoordeeld")
+    status = response.status if response else "?"
+    print(f"    HTTP/status: {status} | titel: {page.title()!r}")
+    dismiss_cookie_banner(page)
     page.wait_for_timeout(NAVIGATION_PAUSE_MS)
 
 
@@ -169,7 +268,7 @@ def page_has_no_results(page: Page) -> bool:
     )
 
 
-def wait_for_country_cards(page: Page, airport: str) -> list[CountryResult] | None:
+def wait_for_country_cards(page: Page, airport: str, debug_label: str) -> list[CountryResult] | None:
     deadline = time.monotonic() + 25
     while time.monotonic() < deadline:
         raw = page.locator('[data-testid="place-card"]').evaluate_all(
@@ -199,6 +298,7 @@ def wait_for_country_cards(page: Page, airport: str) -> list[CountryResult] | No
         if page_has_no_results(page):
             return []
         page.wait_for_timeout(500)
+    debug_snapshot(page, debug_label, f"Geen landenkaarten voor {airport} binnen 25 seconden")
     return None
 
 
@@ -235,7 +335,7 @@ def read_cities(page: Page, airport: str) -> list[CityResult]:
     return results
 
 
-def wait_for_cities(page: Page, airport: str) -> list[CityResult] | None:
+def wait_for_cities(page: Page, airport: str, debug_label: str) -> list[CityResult] | None:
     deadline = time.monotonic() + 25
     while time.monotonic() < deadline:
         results = read_cities(page, airport)
@@ -244,6 +344,7 @@ def wait_for_cities(page: Page, airport: str) -> list[CityResult] | None:
         if page_has_no_results(page):
             return []
         page.wait_for_timeout(500)
+    debug_snapshot(page, debug_label, f"Geen stadslinks voor {airport} binnen 25 seconden")
     return None
 
 
@@ -346,7 +447,7 @@ def settle_flights(
     return latest
 
 
-def wait_for_flights(page: Page, verify: bool = False) -> list[dict[str, Any]] | None:
+def wait_for_flights(page: Page, verify: bool = False, debug_label: str = "flights") -> list[dict[str, Any]] | None:
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         flights = read_flights(page)
@@ -360,6 +461,7 @@ def wait_for_flights(page: Page, verify: bool = False) -> list[dict[str, Any]] |
         if page_has_no_results(page):
             return []
         page.wait_for_timeout(500)
+    debug_snapshot(page, debug_label, "Geen concrete vluchtkaarten binnen 30 seconden")
     return None
 
 
@@ -513,7 +615,7 @@ def scan_scenario(page: Page, scenario: Scenario) -> list[dict[str, Any]]:
 
     for airport in AIRPORTS:
         goto(page, build_explore_url(airport, scenario.outbound, scenario.inbound))
-        results = wait_for_country_cards(page, airport)
+        results = wait_for_country_cards(page, airport, f"{scenario.id}_{airport}_countries")
         if results is None:
             print(f"! {airport}: landenpagina niet stabiel geladen")
             continue
@@ -529,7 +631,7 @@ def scan_scenario(page: Page, scenario: Scenario) -> list[dict[str, Any]]:
     for idx, country in enumerate(country_queue, start=1):
         print(f"  Land {idx}/{len(country_queue)}: {country.airport} → {country.destination} (€{country.price:g})")
         goto(page, country.link)
-        cities = wait_for_cities(page, country.airport)
+        cities = wait_for_cities(page, country.airport, f"{scenario.id}_{country.airport}_{country.destination}_cities")
         if cities is None:
             print("    ! steden niet geladen")
             continue
@@ -554,7 +656,7 @@ def scan_scenario(page: Page, scenario: Scenario) -> list[dict[str, Any]]:
     for idx, city in enumerate(city_queue, start=1):
         print(f"  Stad {idx}/{len(city_queue)}: {city.airport} → {city.city} (vanaf €{city.price:g})")
         goto(page, city.link)
-        flights = wait_for_flights(page, verify=False)
+        flights = wait_for_flights(page, verify=False, debug_label=f"{scenario.id}_{city.airport}_{city.city}_flights")
         if flights is None:
             print("    ! concrete vluchten niet geladen")
             continue
@@ -584,7 +686,7 @@ def verify_top(page: Page, all_flights: list[dict[str, Any]], scenarios: list[Sc
             continue
         print(f"\nVerificatie {idx}/{len(unique)}: {target.get('city')} (€{target.get('price'):g})")
         goto(page, search_link)
-        flights = wait_for_flights(page, verify=True)
+        flights = wait_for_flights(page, verify=True, debug_label=f"verify_{target.get('scenarioId')}_{target.get('airport')}_{target.get('city')}")
         if not flights:
             continue
 
@@ -633,6 +735,8 @@ def write_results(saturday: date, scenarios: list[Scenario], all_flights: list[d
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     unique = best_per_destination(all_flights)
     payload = {
+        "version": VERSION,
+        "browserChannel": BROWSER_CHANNEL,
         "generatedAt": datetime.now().astimezone().isoformat(),
         "weekendSaturday": saturday.isoformat(),
         "scenarios": [
@@ -698,14 +802,17 @@ def main() -> int:
         saturday = next_saturday()
 
     scenarios = scenarios_for(saturday)
+    print(f"Weekend Radar Playwright v{VERSION}")
+    print(f"Browserkanaal: {BROWSER_CHANNEL} (new headless mode)")
     print(f"Weekend: {saturday - timedelta(days=1)} t/m {saturday + timedelta(days=2)}")
     print(f"Vrijdag vrij-regel: {'JA' if scenarios[0].friday_free else 'NEE; vertrek ≥ 21:00'}")
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=not args.headed)
+            browser = p.chromium.launch(headless=not args.headed, channel=BROWSER_CHANNEL)
             context = browser.new_context(
                 locale="nl-NL",
                 timezone_id="Europe/Amsterdam",
@@ -713,6 +820,13 @@ def main() -> int:
             )
             page = context.new_page()
             page.set_default_timeout(15_000)
+            page.on("pageerror", lambda exc: print(f"    PAGE ERROR: {exc}"))
+            page.on(
+                "console",
+                lambda msg: print(f"    CONSOLE {msg.type}: {msg.text}")
+                if msg.type == "error"
+                else None,
+            )
 
             all_flights: list[dict[str, Any]] = []
             for scenario in scenarios:
@@ -730,7 +844,12 @@ def main() -> int:
     except Exception as exc:
         print(f"\nFOUT: {type(exc).__name__}: {exc}", file=sys.stderr)
         try:
-            # The workflow also uploads the results folder, so leave a small diagnostic file.
+            if "page" in locals():
+                debug_snapshot(page, "fatal_error", f"{type(exc).__name__}: {exc}")
+        except Exception:
+            pass
+        try:
+            # De workflow uploadt zowel results/ als debug/.
             (RESULTS_DIR / "error.txt").write_text(
                 f"{datetime.now().astimezone().isoformat()}\n{type(exc).__name__}: {exc}\n",
                 encoding="utf-8",

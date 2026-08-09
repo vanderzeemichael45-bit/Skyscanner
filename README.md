@@ -1,40 +1,67 @@
-# Last-Minute Weekend Radar — Playwright prototype
+# Last-Minute Weekend Radar — Playwright v0.2
 
-Dit is de eerste cloud-versie van de Weekend Optimizer. Hij gebruikt dezelfde kernregels als de Tampermonkey-versie:
+Dit is de tweede cloudtest van de Weekend Optimizer. De zoekregels zijn nog dezelfde als in de Tampermonkey-versie, maar v0.2 is vooral bedoeld om het verschil tussen je gewone browser en GitHub Actions zichtbaar te maken.
+
+## Wat is nieuw in v0.2?
+
+- Playwright start **Chromium in de nieuwe headless-modus** (`channel="chromium"`) in plaats van de aparte Chromium headless shell.
+- GitHub installeert daarom de volledige Chromium-build met `--no-shell`.
+- De console-uitvoer is ongebufferd, zodat je tijdens de run live voortgang ziet.
+- Bij een pagina die niet goed laadt worden automatisch debugbestanden gemaakt:
+  - een volledige screenshot (`.png`);
+  - de HTML van de pagina (`.html`);
+  - een tekstbestand met URL, paginatitel, aantallen van belangrijke selectors en een stuk van de zichtbare paginatekst (`.txt`).
+- De workflow uploadt naast `weekend-radar-results` ook `weekend-radar-debug` wanneer er debugbestanden zijn.
+- Een normale zichtbare cookieknop wordt indien nodig geaccepteerd; er wordt geen botdetectie omzeild.
+
+## Zoekregels
+
+De radar gebruikt dezelfde kernregels als het prototype:
 
 - vertrek vanaf AMS, EIN, RTM en GRQ;
-- drie scenario's: vrijdag→maandag, vrijdag→zondag en zaterdag→maandag;
+- vrijdag → maandag, vrijdag → zondag en zaterdag → maandag;
 - op een normale vrijdag alleen vertrek vanaf 21:00;
 - op de laatste vrijdag van de maand vervalt die tijdsgrens;
 - ruime voorselectie tot €250;
 - score op prijs, verblijfsduur, heen-/terugtijd en rechtstreeks;
 - maximaal één winnaar per bestemming;
-- de beste drie bestemmingen worden nogmaals iets langer geverifieerd.
+- de beste drie bestemmingen worden nogmaals langer geverifieerd.
 
-## Eerste test op GitHub
+## GitHub bijwerken
 
-1. Maak op GitHub een **private repository**, bijvoorbeeld `weekend-radar`.
-2. Upload de inhoud van deze map. Let erop dat `.github/workflows/radar.yml` exact op die plek staat.
-3. Open in GitHub het tabblad **Actions**.
-4. Kies **Weekend Radar**.
-5. Klik **Run workflow**.
-6. Laat `weekend_date` leeg voor komend weekend, of vul bijvoorbeeld `2026-08-22` in.
-7. Open na afloop de workflow-run. Onder **Artifacts** staat `weekend-radar-results` met `latest.json`.
+Vervang in je bestaande repository in ieder geval deze bestanden door de v0.2-versies:
 
-## Lokaal testen
+- `radar.py`
+- `.github/workflows/radar.yml`
+- `README.md`
+
+`requirements.txt` kan ongewijzigd blijven.
+
+## Eerste v0.2-test
+
+1. Open in GitHub **Actions → Weekend Radar**.
+2. Kies **Run workflow**.
+3. Laat `weekend_date` leeg voor het komende weekend.
+4. Start de workflow.
+5. Kijk bij **Radar draaien**. De voortgang hoort nu live te verschijnen.
+
+Na afloop:
+
+- `weekend-radar-results` bevat `results/latest.json`;
+- als een pagina niet goed kon worden uitgelezen, verschijnt ook `weekend-radar-debug`.
+
+Download bij een mislukte scan vooral het debug-artifact en kijk eerst naar de `.png`. Daarmee zien we letterlijk welke pagina GitHub/Chromium van Skyscanner heeft gekregen.
+
+## Lokaal draaien
 
 ```bash
 python -m pip install -r requirements.txt
-python -m playwright install chromium
-python radar.py --date 2026-08-22 --headed
+python -m playwright install --with-deps --no-shell chromium
+python radar.py
 ```
 
-Zonder `--headed` draait de browser headless.
+Een specifiek weekend:
 
-## Nog bewust niet toegevoegd
-
-De eerste GitHub-versie draait alleen handmatig. Zodra één volledige cloudscan stabiel werkt, voegen we de planning 06:07 / 12:07 / 18:07 Europe/Amsterdam, prijshistorie en meldingen toe.
-
-## Als Skyscanner niet laadt
-
-Bekijk de log in GitHub Actions. De radar probeert geen CAPTCHA's of andere toegangscontroles te omzeilen. Als Skyscanner in een cloudbrowser een andere pagina of blokkade toont, moeten we de aanpak daarop aanpassen zonder zulke controles te omzeilen.
+```bash
+python radar.py --date 2026-08-22
+```
