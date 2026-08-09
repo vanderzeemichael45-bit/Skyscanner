@@ -40,7 +40,15 @@ jobs:
           fi
 
       - name: Resultaten bewaren
-           - name: Debugbestanden bewaren
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekend-radar-results
+          path: results/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Debugbestanden bewaren
         if: always()
         uses: actions/upload-artifact@v4
         with:
