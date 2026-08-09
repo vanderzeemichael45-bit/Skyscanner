@@ -1,0 +1,49 @@
+name: Weekend Radar
+
+on:
+  workflow_dispatch:
+    inputs:
+      weekend_date:
+        description: "Datum in het gewenste weekend (YYYY-MM-DD); leeg = komend weekend"
+        required: false
+        type: string
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python installeren
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Dependencies installeren
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Radar draaien
+        env:
+          WEEKEND_DATE: ${{ inputs.weekend_date }}
+        run: |
+          if [ -n "$WEEKEND_DATE" ]; then
+            python radar.py --date "$WEEKEND_DATE"
+          else
+            python radar.py
+          fi
+
+      - name: Resultaten bewaren
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekend-radar-results
+          path: results/
+          if-no-files-found: warn
+          retention-days: 14
