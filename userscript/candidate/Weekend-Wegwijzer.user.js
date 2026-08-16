@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Weekend Wegwijzer Candidate
 // @namespace    weekend-wegwijzer-candidate
-// @version      4.0.3
-// @description  Candidate 4.0.3: vereenvoudigde resultaatfilters en correcte periodekoppen
+// @version      4.0.4
+// @description  Candidate 4.0.4: gecombineerde aanbevelingen en rustigere resultaatkop
 // @match        https://www.skyscanner.nl/*
 // @grant        none
 // @run-at       document-start
@@ -212,7 +212,7 @@
             homeDeadline: CONFIG.defaultHomeDeadline,
             homeArrivalMarginMinutes: CONFIG.defaultHomeArrivalMarginMinutes,
 
-            sortMode: 'price',
+            sortMode: 'recommended',
 
             travelers: 1,
             baggage: 'personal',
@@ -230,14 +230,27 @@
     }
 
 
+    function normalizeFiveMinuteTime(value, fallback = '') {
+        const match = String(value || '').match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+        if (!match || Number(match[2]) % 5 !== 0) return fallback;
+        return `${match[1]}:${match[2]}`;
+    }
+
+
     function loadSettings() {
+        const stored = loadJson(
+            CONFIG.storage.settings,
+            {}
+        );
+
         return {
             ...defaultSettings(),
-
-            ...loadJson(
-                CONFIG.storage.settings,
-                {}
-            )
+            ...stored,
+            homeDeadline: normalizeFiveMinuteTime(
+                stored.homeDeadline,
+                CONFIG.defaultHomeDeadline
+            ),
+            sortMode: 'recommended'
         };
     }
 
@@ -3643,6 +3656,39 @@
                 }
             );
 
+        const byPrice = [...scored].sort(
+            (a, b) =>
+                (a.floorTotalPrice ?? a.floorPrice) -
+                (b.floorTotalPrice ?? b.floorPrice) ||
+                a.price - b.price ||
+                b.stayHours - a.stayHours
+        );
+
+        if (mode === 'recommended') {
+            const longest = [...scored].sort(
+                (a, b) =>
+                    (b.effectiveStayHours ?? b.stayHours) -
+                    (a.effectiveStayHours ?? a.stayHours) ||
+                    (a.floorTotalPrice ?? a.floorPrice) -
+                    (b.floorTotalPrice ?? b.floorPrice)
+            )[0];
+            const bestDeal = [...scored].sort(
+                (a, b) =>
+                    b.dealScore - a.dealScore ||
+                    (a.floorTotalPrice ?? a.floorPrice) -
+                    (b.floorTotalPrice ?? b.floorPrice)
+            )[0];
+            const seen = new Set();
+            return [byPrice[0], longest, bestDeal, ...byPrice]
+                .filter(Boolean)
+                .filter(result => {
+                    const key = flightKey(result);
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+        }
+
         if (
             mode === 'stay'
         ) {
@@ -3669,17 +3715,7 @@
             );
         }
 
-        return scored.sort(
-            (a, b) =>
-                (a.floorTotalPrice ?? a.floorPrice) -
-                (b.floorTotalPrice ?? b.floorPrice) ||
-
-                a.price -
-                b.price ||
-
-                b.stayHours -
-                a.stayHours
-        );
+        return byPrice;
     }
 
     function addRecommendationTags(results) {
@@ -5108,7 +5144,7 @@ function applyResultFilters(
                 <div style="margin-top:13px;font-size:10px;opacity:.55">EERLIJKE REISVERGELIJKING</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
                     <label style="font-size:11px">Uiterlijk thuis
-                        <input id="ww-home-deadline" type="time" value="${settings.homeDeadline || CONFIG.defaultHomeDeadline}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                        <input id="ww-home-deadline" type="time" step="300" value="${settings.homeDeadline || CONFIG.defaultHomeDeadline}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
                     </label>
                     <label style="font-size:11px">Marge na landing
                         <input id="ww-home-margin" type="number" min="0" step="15" value="${settings.homeArrivalMarginMinutes}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
@@ -5501,7 +5537,7 @@ function applyResultFilters(
                         <input id="ww-custom-inbound-date" type="date" value="${toInputDate(monday)}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
                     </label>
                     <label style="font-size:10px">Uiterlijk thuis (optioneel)
-                        <input id="ww-custom-home-time" type="time" value="" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                        <input id="ww-custom-home-time" type="time" step="300" value="" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
                     </label>
                 </div>
 
@@ -7565,6 +7601,10 @@ function applyResultFilters(
                         border-radius:7px;
                     "
                 >
+                    <option value="recommended">
+                        💶 Goedkoopste + uitgelicht
+                    </option>
+
                     <option value="price">
                         💶 Goedkoopste
                     </option>
@@ -8643,7 +8683,7 @@ function applyResultFilters(
     function diagnosticSnapshot() {
         return {
             product: 'Weekend Wegwijzer',
-            version: '4.0.3',
+            version: '4.0.4',
             generatedAt: new Date().toISOString(),
             page: { origin: location.origin, path: location.pathname },
             settings: activeScan?.settings || loadSettings(),
@@ -9386,22 +9426,6 @@ function applyResultFilters(
                 ·
 
                 ${formatElapsed(elapsed)}
-
-                ${
-                    activeScan
-                        ?.stats
-                        ?.cacheHits
-                        ? `
-                            · ⚡
-                            ${
-                                activeScan
-                                    .stats
-                                    .cacheHits
-                            }
-                            direct geladen
-                        `
-                        : ''
-                }
             </div>
 
             ${
@@ -10248,6 +10272,7 @@ function applyResultFilters(
     if (globalThis.__WW_TEST_MODE__) {
         globalThis.__WW_TEST_EXPORTS__ = {
             timeToMinutes,
+            normalizeFiveMinuteTime,
             calculateStayHours,
             isEuropeanCountry,
             selectBalancedCandidates,
@@ -10256,6 +10281,7 @@ function applyResultFilters(
             airportAccessFor,
             effectiveStayHours,
             priceModel,
+            sortDestinations,
             createScenarios,
             formatAvailability,
             expectedHomeArrivalMinutes,
