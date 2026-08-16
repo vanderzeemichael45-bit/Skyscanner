@@ -1,0 +1,27 @@
+{
+  "itineraries": {
+    "results": [
+      {
+        "price": { "raw": 79.5 },
+        "legs": [
+          {
+            "departure": "2026-09-04T21:30:00",
+            "arrival": "2026-09-04T23:10:00",
+            "stopCount": 0,
+            "origin": { "name": "Amsterdam" },
+            "destination": { "name": "Rome" },
+            "carriers": { "marketing": [{ "name": "Example Air" }] }
+          },
+          {
+            "departure": "2026-09-07T18:00:00",
+            "arrival": "2026-09-07T20:10:00",
+            "stopCount": 0,
+            "origin": { "name": "Rome" },
+            "destination": { "name": "Amsterdam" },
+            "carriers": { "marketing": [{ "name": "Example Air" }] }
+          }
+        ]
+      }
+    ]
+  }
+}

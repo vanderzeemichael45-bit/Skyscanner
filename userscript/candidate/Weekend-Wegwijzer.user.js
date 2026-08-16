@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Weekend Wegwijzer Candidate
 // @namespace    weekend-wegwijzer-candidate
-// @version      3.8.1
-// @description  Candidate 3.8.1: robuustere workers, cache, diagnostiek en automatische zelfcontrole
+// @version      3.9.0
+// @description  Candidate 3.9.0: eerlijke deur-tot-deurkosten, effectieve weekendtijd en slimmer zoeken
 // @match        https://www.skyscanner.nl/*
 // @grant        none
 // @run-at       document-start
@@ -20,7 +20,9 @@
     const CONFIG = {
         airports: ['AMS', 'EIN', 'RTM', 'GRQ'],
 
-        topCount: 10,
+        topCount: 5,
+        initialResultCount: 5,
+        progressiveResultStep: 5,
 
         /*
          * SPEED:
@@ -200,6 +202,17 @@
 
             sortMode: 'price',
 
+            travelers: 1,
+            baggage: 'personal',
+            baggageCostPerTraveler: 0,
+            bookingFees: 0,
+            maxStops: 0,
+            destinationTransferMinutes: 45,
+            returnAirportBufferMinutes: 120,
+            airportAccess: Object.fromEntries(
+                CONFIG.airports.map(airport => [airport, { minutes: 0, cost: 0 }])
+            ),
+
             compactMode: false
         };
     }
@@ -356,8 +369,14 @@
 
 
     function localIsoNumber(iso) {
+        const value = String(iso || '');
+        if (/([zZ]|[+-]\d{2}:?\d{2})$/.test(value)) {
+            const timestamp = Date.parse(value);
+            return Number.isFinite(timestamp) ? timestamp : null;
+        }
+
         const match =
-            String(iso || '')
+            value
                 .match(
                     /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/
                 );
@@ -404,6 +423,36 @@
                 3600000
             ) * 10
         ) / 10;
+    }
+
+    function airportAccessFor(settings, airport) {
+        const access = settings?.airportAccess?.[airport] || {};
+        return {
+            minutes: Math.max(0, Number(access.minutes) || 0),
+            cost: Math.max(0, Number(access.cost) || 0)
+        };
+    }
+
+    function effectiveStayHours(stayHours, settings) {
+        const transferMinutes = Math.max(0, Number(settings?.destinationTransferMinutes) || 0);
+        const bufferMinutes = Math.max(0, Number(settings?.returnAirportBufferMinutes) || 0);
+        return Math.max(0, Math.round((stayHours - ((transferMinutes * 2 + bufferMinutes) / 60)) * 10) / 10);
+    }
+
+    function priceModel(flightPrice, airport, settings) {
+        const travelers = Math.max(1, Math.round(Number(settings?.travelers) || 1));
+        const access = airportAccessFor(settings, airport);
+        const baggageCost = Math.max(0, Number(settings?.baggageCostPerTraveler) || 0);
+        const bookingFees = Math.max(0, Number(settings?.bookingFees) || 0);
+        const baggageKnown = settings?.baggage === 'personal' || baggageCost > 0;
+        const total = flightPrice * travelers + access.cost + baggageCost * travelers + bookingFees;
+        return {
+            travelers,
+            access,
+            baggageKnown,
+            total: Math.round(total * 100) / 100,
+            incomplete: !baggageKnown
+        };
     }
 
 
@@ -1031,7 +1080,8 @@
 
     function buildExploreUrl(
         airport,
-        scenario
+        scenario,
+        settings
     ) {
         const params =
             new URLSearchParams({
@@ -1048,8 +1098,12 @@
                     'false',
 
                 preferdirects:
-                    'true'
+                    settings.maxStops === 0 ? 'true' : 'false'
             });
+
+        if (settings.maxStops === 0) {
+            params.set('stops', 'direct');
+        }
 
         return (
             'https://www.skyscanner.nl/' +
@@ -1062,7 +1116,7 @@
     }
 
 
-    function ensureDirectUrl(url) {
+    function ensureSearchUrl(url, maxStops = WORKER_JOB?.maxStops ?? 0) {
         try {
             const parsed =
                 new URL(
@@ -1070,10 +1124,10 @@
                     location.origin
                 );
 
-            parsed.searchParams.set(
-                'preferdirects',
-                'true'
-            );
+            parsed.searchParams.set('preferdirects', maxStops === 0 ? 'true' : 'false');
+
+            if (maxStops === 0) parsed.searchParams.set('stops', 'direct');
+            else parsed.searchParams.delete('stops');
 
             parsed.searchParams.set(
                 'outboundaltsenabled',
@@ -1102,6 +1156,14 @@
                 );
 
             parsed.hash = '';
+
+            for (const key of [...parsed.searchParams.keys()]) {
+                if (/^(ref|utm_|associateid|campaign|tracking|market|locale)/i.test(key)) {
+                    parsed.searchParams.delete(key);
+                }
+            }
+
+            parsed.searchParams.sort();
 
             return parsed.href;
 
@@ -1671,7 +1733,7 @@
                         price,
 
                         link:
-                            ensureDirectUrl(
+                            ensureSearchUrl(
                                 card.href
                             )
                     };
@@ -1747,7 +1809,7 @@
                 price,
 
                 link:
-                    ensureDirectUrl(
+                    ensureSearchUrl(
                         link.href
                     )
             });
@@ -1774,6 +1836,16 @@
         );
     }
 
+    function classifyPageState() {
+        const text = normalize(document.body?.innerText);
+        const title = normalize(document.title);
+        if (/captcha|robot|verify you are human|bevestig dat je een mens bent/.test(`${title} ${text}`)) return 'BOT_CHECK';
+        if (/access denied|toegang geweigerd|forbidden|temporarily blocked/.test(`${title} ${text}`)) return 'ACCESS_BLOCKED';
+        if (/too many requests|te veel verzoeken|rate limit/.test(`${title} ${text}`)) return 'RATE_LIMITED';
+        if (/cookies accepteren|accept all cookies|cookievoorkeuren/.test(text) && text.length < 5000) return 'COOKIE_WALL';
+        return null;
+    }
+
 
     async function waitForStableDomList(
         reader,
@@ -1791,6 +1863,9 @@
             started <
             timeout
         ) {
+            const pageState = classifyPageState();
+            if (pageState) throw new Error(`__PAGE_STATE__:${pageState}`);
+
             const results =
                 reader() || [];
 
@@ -1877,7 +1952,7 @@
     }
 
 
-    function compactJsonFlights(data) {
+    function compactJsonFlights(data, allowedStops = WORKER_JOB?.maxStops ?? 0) {
         const results =
             data
                 ?.itineraries
@@ -1911,14 +1986,8 @@
             const inbound =
                 legs[1];
 
-            if (
-                Number(
-                    outbound?.stopCount
-                ) !== 0 ||
-                Number(
-                    inbound?.stopCount
-                ) !== 0
-            ) {
+            const maxStops = Math.max(0, Number(allowedStops) || 0);
+            if (Number(outbound?.stopCount) > maxStops || Number(inbound?.stopCount) > maxStops) {
                 continue;
             }
 
@@ -2021,6 +2090,9 @@
                         inbound
                     ),
 
+                outboundStops: Number(outbound?.stopCount) || 0,
+                inboundStops: Number(inbound?.stopCount) || 0,
+
                 source:
                     'JSON'
             });
@@ -2034,7 +2106,7 @@
        DOM VLUCHTEN
        ============================================================ */
 
-    function parseDescriptor(text) {
+    function parseDescriptor(text, allowedStops = WORKER_JOB?.maxStops ?? 0) {
         if (!text) {
             return null;
         }
@@ -2084,9 +2156,8 @@
                 /Rechtstreekse vlucht/gi
             ) || [];
 
-        if (
-            direct.length < 2
-        ) {
+        const maxStops = Math.max(0, Number(allowedStops) || 0);
+        if (maxStops === 0 && direct.length < 2) {
             return null;
         }
 
@@ -2141,6 +2212,9 @@
                 )?.[1]
                 ?.trim() ||
                 '?',
+
+            outboundStops: direct.length >= 1 ? 0 : 1,
+            inboundStops: direct.length >= 2 ? 0 : 1,
 
             source:
                 'DOM'
@@ -2285,6 +2359,9 @@
             started <
             CONFIG.flightTimeoutMs
         ) {
+            const pageState = classifyPageState();
+            if (pageState) return { results: [], source: pageState };
+
             if (
                 JSON_CAPTURE.complete
             ) {
@@ -2579,7 +2656,9 @@
                 pending.resolve({
                     results: [],
                     source:
-                        'ERROR',
+                        String(message?.payload?.reason || '').startsWith('__PAGE_STATE__:')
+                            ? String(message.payload.reason).split(':')[1]
+                            : 'ERROR',
 
                     error:
                         message
@@ -2984,8 +3063,15 @@
     function enrichFlight(
         flight,
         city,
-        scenario
+        scenario,
+        settings
     ) {
+        const stayHours = calculateStayHours(
+            flight.outboundArrivalIso,
+            flight.inboundDepartureIso
+        );
+        const pricing = priceModel(flight.price, city.airport, settings);
+
         return {
             ...flight,
 
@@ -3010,14 +3096,14 @@
             link:
                 city.link,
 
-            stayHours:
-                calculateStayHours(
-                    flight
-                        .outboundArrivalIso,
-
-                    flight
-                        .inboundDepartureIso
-                )
+            stayHours,
+            effectiveStayHours: effectiveStayHours(stayHours, settings),
+            totalPrice: pricing.total,
+            priceIncomplete: pricing.incomplete,
+            baggageKnown: pricing.baggageKnown,
+            accessMinutes: pricing.access.minutes,
+            accessCost: pricing.access.cost,
+            travelers: pricing.travelers
         };
     }
 
@@ -3029,7 +3115,7 @@
         if (
             settings.maxBudget >
             0 &&
-            flight.price >
+            (flight.totalPrice ?? flight.price) >
             settings.maxBudget
         ) {
             return false;
@@ -3038,7 +3124,7 @@
         if (
             settings.minStayHours >
             0 &&
-            flight.stayHours <
+            (flight.effectiveStayHours ?? flight.stayHours) <
             settings.minStayHours
         ) {
             return false;
@@ -3090,11 +3176,11 @@
         b
     ) {
         return (
-            a.price -
-            b.price ||
+            (a.totalPrice ?? a.price) -
+            (b.totalPrice ?? b.price) ||
 
-            b.stayHours -
-            a.stayHours ||
+            (b.effectiveStayHours ?? b.stayHours) -
+            (a.effectiveStayHours ?? a.stayHours) ||
 
             returnMinutes(b) -
             returnMinutes(a)
@@ -3107,8 +3193,8 @@
         b
     ) {
         return (
-            b.stayHours -
-            a.stayHours ||
+            (b.effectiveStayHours ?? b.stayHours) -
+            (a.effectiveStayHours ?? a.stayHours) ||
 
             a.price -
             b.price ||
@@ -3152,11 +3238,11 @@
         const cheapest =
             sortedByPrice[0];
 
-        const near =
-            flights.filter(
-                flight =>
-                    flight.price <=
-                    cheapest.price +
+            const near =
+                flights.filter(
+                    flight =>
+                    (flight.totalPrice ?? flight.price) <=
+                    (cheapest.totalPrice ?? cheapest.price) +
                     CONFIG
                         .nearPriceTolerance
             );
@@ -3269,8 +3355,8 @@
             const near =
                 variants.filter(
                     flight =>
-                        flight.price <=
-                        cheapest.price +
+                        (flight.totalPrice ?? flight.price) <=
+                        (cheapest.totalPrice ?? cheapest.price) +
                         CONFIG
                             .nearPriceTolerance
                 );
@@ -3303,14 +3389,17 @@
                 floorPrice:
                     cheapest.price,
 
+                floorTotalPrice:
+                    cheapest.totalPrice ?? cheapest.price,
+
                 cheapestVariant:
                     cheapest,
 
                 recommendationExtra:
                     Math.round(
                         (
-                            recommended.price -
-                            cheapest.price
+                            (recommended.totalPrice ?? recommended.price) -
+                            (cheapest.totalPrice ?? cheapest.price)
                         ) *
                         100
                     ) / 100,
@@ -3320,16 +3409,16 @@
                         Math.max(
                             0,
 
-                            recommended.stayHours -
-                            cheapest.stayHours
+                            (recommended.effectiveStayHours ?? recommended.stayHours) -
+                            (cheapest.effectiveStayHours ?? cheapest.stayHours)
                         ) *
                         10
                     ) / 10,
 
                 rawDealValue:
-                    recommended.stayHours /
+                    (recommended.effectiveStayHours ?? recommended.stayHours) /
                     Math.max(
-                        recommended.price,
+                        recommended.totalPrice ?? recommended.price,
                         1
                     ),
 
@@ -3420,11 +3509,11 @@
         ) {
             return scored.sort(
                 (a, b) =>
-                    b.stayHours -
-                    a.stayHours ||
+                    (b.effectiveStayHours ?? b.stayHours) -
+                    (a.effectiveStayHours ?? a.stayHours) ||
 
-                    a.floorPrice -
-                    b.floorPrice
+                    (a.floorTotalPrice ?? a.floorPrice) -
+                    (b.floorTotalPrice ?? b.floorPrice)
             );
         }
 
@@ -3436,15 +3525,15 @@
                     b.dealScore -
                     a.dealScore ||
 
-                    a.floorPrice -
-                    b.floorPrice
+                    (a.floorTotalPrice ?? a.floorPrice) -
+                    (b.floorTotalPrice ?? b.floorPrice)
             );
         }
 
         return scored.sort(
             (a, b) =>
-                a.floorPrice -
-                b.floorPrice ||
+                (a.floorTotalPrice ?? a.floorPrice) -
+                (b.floorTotalPrice ?? b.floorPrice) ||
 
                 a.price -
                 b.price ||
@@ -3452,6 +3541,24 @@
                 b.stayHours -
                 a.stayHours
         );
+    }
+
+    function addRecommendationTags(results) {
+        if (!results.length) return results;
+        const cheapest = [...results].sort((a, b) => (a.floorTotalPrice ?? a.floorPrice) - (b.floorTotalPrice ?? b.floorPrice))[0];
+        const longest = [...results].sort((a, b) => (b.effectiveStayHours ?? b.stayHours) - (a.effectiveStayHours ?? a.stayHours))[0];
+        const bestDeal = [...results].sort((a, b) => b.dealScore - a.dealScore)[0];
+        const knownAccess = results.filter(result => result.accessMinutes > 0);
+        const nearest = [...knownAccess].sort((a, b) => a.accessMinutes - b.accessMinutes)[0];
+        return results.map(result => ({
+            ...result,
+            recommendationTags: [
+                result === cheapest ? 'Goedkoopste totaal' : '',
+                result === longest ? 'Meeste weekendtijd' : '',
+                result === bestDeal ? 'Beste balans' : '',
+                result === nearest ? 'Dichtstbijzijnde luchthaven' : ''
+            ].filter(Boolean)
+        }));
     }
 
 
@@ -3525,7 +3632,7 @@ function getDestinationVariants(result) {
         if (
             !variant ||
             !Number.isFinite(
-                variant.price
+                variant.totalPrice ?? variant.price
             )
         ) {
             continue;
@@ -3570,7 +3677,7 @@ function variantPassesResultFilters(
      */
     if (
         filters.under100 &&
-        variant.price >= 100
+        (variant.totalPrice ?? variant.price) >= 100
     ) {
         return false;
     }
@@ -3581,7 +3688,7 @@ function variantPassesResultFilters(
      */
     if (
         filters.over48 &&
-        variant.stayHours < 48
+        (variant.effectiveStayHours ?? variant.stayHours) < 48
     ) {
         return false;
     }
@@ -3676,8 +3783,8 @@ function chooseFilteredVariant(
     const near =
         matching.filter(
             variant =>
-                variant.price <=
-                cheapest.price +
+                (variant.totalPrice ?? variant.price) <=
+                (cheapest.totalPrice ?? cheapest.price) +
                 CONFIG
                     .nearPriceTolerance
         );
@@ -3718,14 +3825,17 @@ function chooseFilteredVariant(
         floorPrice:
             cheapest.price,
 
+        floorTotalPrice:
+            cheapest.totalPrice ?? cheapest.price,
+
         cheapestVariant:
             cheapest,
 
         recommendationExtra:
             Math.round(
                 (
-                    recommended.price -
-                    cheapest.price
+                    (recommended.totalPrice ?? recommended.price) -
+                    (cheapest.totalPrice ?? cheapest.price)
                 ) *
                 100
             ) / 100,
@@ -3735,16 +3845,16 @@ function chooseFilteredVariant(
                 Math.max(
                     0,
 
-                    recommended.stayHours -
-                    cheapest.stayHours
+                    (recommended.effectiveStayHours ?? recommended.stayHours) -
+                    (cheapest.effectiveStayHours ?? cheapest.stayHours)
                 ) *
                 10
             ) / 10,
 
         rawDealValue:
-            recommended.stayHours /
+            (recommended.effectiveStayHours ?? recommended.stayHours) /
             Math.max(
-                recommended.price,
+                recommended.totalPrice ?? recommended.price,
                 1
             ),
 
@@ -4143,6 +4253,7 @@ function applyResultFilters(
 
             timeout: 0,
             error: 0,
+            blocked: 0,
 
             cacheHits: 0,
 
@@ -4270,6 +4381,9 @@ function applyResultFilters(
             source === 'ERROR'
         ) {
             stats.error++;
+
+        } else if (['BOT_CHECK', 'ACCESS_BLOCKED', 'RATE_LIMITED', 'COOKIE_WALL'].includes(source)) {
+            stats.blocked++;
         }
     }
 
@@ -4294,6 +4408,20 @@ function applyResultFilters(
 
                 0
             );
+    }
+
+    function updateProgressivePreview(states) {
+        const target = document.querySelector('#weekend-wegwijzer #ww-progressive-preview');
+        if (!target) return;
+        const partial = states.flatMap(state => groupDestinations(state.flights));
+        const ranked = addRecommendationTags(sortDestinations(partial, 'deal')).slice(0, 3);
+        if (!ranked.length) return;
+        target.style.display = 'block';
+        target.innerHTML = `<strong>Al gevonden</strong>${ranked.map(result => `
+            <div style="display:flex;justify-content:space-between;gap:8px;margin-top:5px">
+                <span>${escapeHtml(result.city)} · ${formatHours(result.effectiveStayHours ?? result.stayHours)}</span>
+                <strong>${euro(result.floorTotalPrice ?? result.floorPrice)}</strong>
+            </div>`).join('')}`;
     }
 
 
@@ -4855,6 +4983,48 @@ function applyResultFilters(
                         </select>
                     </label>
                 </div>
+
+                <div style="margin-top:13px;font-size:10px;opacity:.55">EERLIJKE REISVERGELIJKING</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
+                    <label style="font-size:11px">Reizigers
+                        <input id="ww-travelers" type="number" min="1" max="9" value="${settings.travelers}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                    </label>
+                    <label style="font-size:11px">Bagage
+                        <select id="ww-baggage" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                            <option value="personal" ${settings.baggage === 'personal' ? 'selected' : ''}>Alleen kleine tas</option>
+                            <option value="cabin" ${settings.baggage === 'cabin' ? 'selected' : ''}>Cabinebagage</option>
+                            <option value="checked" ${settings.baggage === 'checked' ? 'selected' : ''}>Ruimbagage</option>
+                        </select>
+                    </label>
+                    <label style="font-size:11px">Bagage p.p. retour
+                        <input id="ww-baggage-cost" type="number" min="0" step="1" value="${settings.baggageCostPerTraveler || ''}" placeholder="Onbekend" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                    </label>
+                    <label style="font-size:11px">Overige boekingskosten
+                        <input id="ww-booking-fees" type="number" min="0" step="1" value="${settings.bookingFees || ''}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                    </label>
+                    <label style="font-size:11px">Vluchten
+                        <select id="ww-max-stops" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                            <option value="0" ${settings.maxStops === 0 ? 'selected' : ''}>Alleen rechtstreeks</option>
+                            <option value="1" ${settings.maxStops === 1 ? 'selected' : ''}>Maximaal 1 overstap</option>
+                        </select>
+                    </label>
+                    <label style="font-size:11px">Transfer bestemming (enkele reis)
+                        <input id="ww-destination-transfer" type="number" min="0" step="5" value="${settings.destinationTransferMinutes}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                    </label>
+                    <label style="grid-column:1/-1;font-size:11px">Voor de terugvlucht op luchthaven
+                        <input id="ww-return-buffer" type="number" min="30" step="15" value="${settings.returnAirportBufferMinutes}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                    </label>
+                </div>
+
+                <div style="margin-top:12px;font-size:10px;opacity:.55">NAAR DE VERTREKLUCHTHAVEN · RETOURKOSTEN EN ENKELE-REISTIJD</div>
+                <div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:6px;align-items:center;margin-top:6px">
+                    ${CONFIG.airports.map(airport => {
+                        const access = airportAccessFor(settings, airport);
+                        return `<strong>${airport}</strong>
+                            <input class="ww-access-minutes" data-airport="${airport}" type="number" min="0" step="5" value="${access.minutes || ''}" placeholder="minuten" style="width:100%;box-sizing:border-box;padding:7px;border:0;border-radius:7px">
+                            <input class="ww-access-cost" data-airport="${airport}" type="number" min="0" step="1" value="${access.cost || ''}" placeholder="€ retour" style="width:100%;box-sizing:border-box;padding:7px;border:0;border-radius:7px">`;
+                    }).join('')}
+                </div>
             </details>
         `;
     }
@@ -4937,7 +5107,19 @@ function applyResultFilters(
                         '#ww-earliest-return'
                     )
                     ?.value ||
-                ''
+                '',
+
+            travelers: Math.max(1, Number(panel.querySelector('#ww-travelers')?.value) || 1),
+            baggage: panel.querySelector('#ww-baggage')?.value || 'personal',
+            baggageCostPerTraveler: Math.max(0, Number(panel.querySelector('#ww-baggage-cost')?.value) || 0),
+            bookingFees: Math.max(0, Number(panel.querySelector('#ww-booking-fees')?.value) || 0),
+            maxStops: Math.min(1, Math.max(0, Number(panel.querySelector('#ww-max-stops')?.value) || 0)),
+            destinationTransferMinutes: Math.max(0, Number(panel.querySelector('#ww-destination-transfer')?.value) || 0),
+            returnAirportBufferMinutes: Math.max(30, Number(panel.querySelector('#ww-return-buffer')?.value) || 120),
+            airportAccess: Object.fromEntries(CONFIG.airports.map(airport => [airport, {
+                minutes: Math.max(0, Number(panel.querySelector(`.ww-access-minutes[data-airport="${airport}"]`)?.value) || 0),
+                cost: Math.max(0, Number(panel.querySelector(`.ww-access-cost[data-airport="${airport}"]`)?.value) || 0)
+            }]))
         };
 
         saveSettings(
@@ -5679,6 +5861,8 @@ function applyResultFilters(
                 </div>
             </div>
 
+            <div id="ww-progressive-preview" style="display:none;margin-top:10px;padding:10px;border-radius:9px;background:rgba(34,197,94,.10);font-size:10px"></div>
+
             <button
                 id="ww-stop"
                 style="
@@ -5936,7 +6120,8 @@ function applyResultFilters(
                         flight,
                         city,
                         scenarioState
-                            .scenario
+                            .scenario,
+                        weekendState.settings
                     )
             );
 
@@ -5971,6 +6156,9 @@ function applyResultFilters(
         ) {
             finalStatus =
                 'TIMEOUT';
+
+        } else if (['BOT_CHECK', 'ACCESS_BLOCKED', 'RATE_LIMITED', 'COOKIE_WALL'].includes(response?.source)) {
+            finalStatus = response.source;
 
         } else if (
             response?.source ===
@@ -6075,6 +6263,8 @@ function applyResultFilters(
         updateUniqueCount(
             allStates
         );
+
+        updateProgressivePreview(allStates);
 
         updateProgressUi();
     }
@@ -6207,7 +6397,9 @@ function applyResultFilters(
                                 inbound:
                                     scenarioState
                                         .scenario
-                                        .inbound
+                                        .inbound,
+
+                                maxStops: weekendState.settings.maxStops
                             },
 
                             activeScan.token,
@@ -6314,7 +6506,9 @@ function applyResultFilters(
                                             inbound:
                                                 scenarioState
                                                     .scenario
-                                                    .inbound
+                                                    .inbound,
+
+                                            maxStops: weekendState.settings.maxStops
                                         },
 
                                         activeScan.token,
@@ -6496,7 +6690,8 @@ function applyResultFilters(
                     const url =
                         buildExploreUrl(
                             airport,
-                            scenario
+                            scenario,
+                            settings
                         );
 
                     explorePromises.push(
@@ -6511,7 +6706,8 @@ function applyResultFilters(
                                         url,
 
                                         {
-                                            airport
+                                            airport,
+                                            maxStops: settings.maxStops
                                         },
 
                                         activeScan.token
@@ -6701,7 +6897,9 @@ function applyResultFilters(
                                                 country.airport,
 
                                             country:
-                                                country.country
+                                                country.country,
+
+                                            maxStops: settings.maxStops
                                         },
 
                                         activeScan.token
@@ -6993,7 +7191,8 @@ function applyResultFilters(
        ============================================================ */
 
     function createActiveScan(
-        forceFreshFlights
+        forceFreshFlights,
+        settings
     ) {
         return {
             token:
@@ -7016,6 +7215,8 @@ function applyResultFilters(
                 null,
 
             forceFreshFlights,
+
+            settings,
 
             stats:
                 emptyStats(),
@@ -7040,7 +7241,8 @@ function applyResultFilters(
     ) {
         activeScan =
             createActiveScan(
-                forceFreshFlights
+                forceFreshFlights,
+                settings
             );
 
         renderScanShell(
@@ -7094,7 +7296,8 @@ function applyResultFilters(
     ) {
         activeScan =
             createActiveScan(
-                false
+                false,
+                settings
             );
 
         renderScanShell(
@@ -7771,14 +7974,19 @@ function applyResultFilters(
                     ">
                         ${
                             euro(
-                                result.floorPrice
+                                result.floorTotalPrice ?? result.floorPrice
                             )
                         }
                     </strong>
 
+                    <div style="font-size:9px;opacity:.58">
+                        geschat totaal · ${result.travelers || 1} reiziger${(result.travelers || 1) === 1 ? '' : 's'}
+                        ${result.priceIncomplete ? ' · bagage onbekend' : ''}
+                    </div>
+
                     ${
-                        result.price >
-                        result.floorPrice
+                        (result.totalPrice ?? result.price) >
+                        (result.floorTotalPrice ?? result.floorPrice)
                             ? `
                                 <div style="
                                     font-size:9px;
@@ -7787,7 +7995,7 @@ function applyResultFilters(
                                     aanrader
                                     ${
                                         euro(
-                                            result.price
+                                            result.totalPrice ?? result.price
                                         )
                                     }
                                 </div>
@@ -7852,7 +8060,7 @@ function applyResultFilters(
                     ⏱
                     ${
                         formatHours(
-                            result.stayHours
+                            result.effectiveStayHours ?? result.stayHours
                         )
                     }
                 </span>
@@ -7892,6 +8100,7 @@ function applyResultFilters(
                         result
                     )
                 }
+                ${(result.recommendationTags || []).map(tag => `<span style="padding:3px 6px;border-radius:5px;background:rgba(34,197,94,.15);font-size:10px;font-weight:700">${escapeHtml(tag)}</span>`).join('')}
             </div>
 
             ${
@@ -8129,9 +8338,14 @@ function applyResultFilters(
 
                     ${
                         formatHours(
-                            result.stayHours
+                            result.effectiveStayHours ?? result.stayHours
                         )
                     }
+
+                    · vlucht ${euro(result.price)}
+                    ${result.accessCost ? ` · luchthavenreis ${euro(result.accessCost)}` : ''}
+                    ${result.accessMinutes ? ` · ${result.accessMinutes} min naar luchthaven` : ''}
+                    · ${Math.max(result.outboundStops || 0, result.inboundStops || 0)} overstap(pen)
                 </div>
 
                 <button
@@ -8324,7 +8538,7 @@ function applyResultFilters(
     function diagnosticSnapshot() {
         return {
             product: 'Weekend Wegwijzer',
-            version: '3.8.1',
+            version: '3.9.0',
             generatedAt: new Date().toISOString(),
             page: { origin: location.origin, path: location.pathname },
             settings: loadSettings(),
@@ -8598,6 +8812,18 @@ function applyResultFilters(
 
             ERROR:
                 'Technische fout',
+
+            BOT_CHECK:
+                'Skyscanner vraagt menselijke controle',
+
+            ACCESS_BLOCKED:
+                'Toegang tijdelijk geblokkeerd',
+
+            RATE_LIMITED:
+                'Te veel verzoeken; later opnieuw proberen',
+
+            COOKIE_WALL:
+                'Cookiekeuze blokkeert de zoekpagina',
 
             NO_RESULT:
                 'Geen resultaat'
@@ -9077,6 +9303,10 @@ function applyResultFilters(
                 id="ww-results"
             ></div>
 
+            <button id="ww-more-results" style="display:none;width:100%;margin-top:7px;padding:8px;border:0;border-radius:7px;cursor:pointer;font-weight:700">
+                Meer resultaten
+            </button>
+
             <div style="
                 display:grid;
                 grid-template-columns:1fr 1fr 1fr;
@@ -9148,6 +9378,8 @@ function applyResultFilters(
         sort.value =
             settings.sortMode;
 
+        let visibleCount = CONFIG.initialResultCount;
+
         function draw() {
             const container =
                 panel.querySelector(
@@ -9169,10 +9401,10 @@ function applyResultFilters(
              * daarna opnieuw score/rangschikking berekenen.
              */
             let sorted =
-                sortDestinations(
+                addRecommendationTags(sortDestinations(
                     filtered,
                     settings.sortMode
-                );
+                ));
 
             const summary =
                 panel.querySelector(
@@ -9200,8 +9432,14 @@ function applyResultFilters(
             const visible =
                 sorted.slice(
                     0,
-                    CONFIG.topCount
+                    visibleCount
                 );
+
+            const moreButton = panel.querySelector('#ww-more-results');
+            if (moreButton) {
+                moreButton.style.display = sorted.length > visibleCount ? 'block' : 'none';
+                moreButton.textContent = `Meer resultaten (${sorted.length - visibleCount})`;
+            }
 
             if (
                 !visible.length
@@ -9242,6 +9480,11 @@ function applyResultFilters(
             filters,
             draw
         );
+
+        panel.querySelector('#ww-more-results')?.addEventListener('click', () => {
+            visibleCount += CONFIG.progressiveResultStep;
+            draw();
+        });
 
         sort.addEventListener(
             'change',
@@ -9352,16 +9595,16 @@ function applyResultFilters(
             [...all]
                 .sort(
                     (a, b) =>
-                        a.result.floorPrice -
-                        b.result.floorPrice
+                        (a.result.floorTotalPrice ?? a.result.floorPrice) -
+                        (b.result.floorTotalPrice ?? b.result.floorPrice)
                 )[0];
 
         const longest =
             [...all]
                 .sort(
                     (a, b) =>
-                        b.result.stayHours -
-                        a.result.stayHours
+                        (b.result.effectiveStayHours ?? b.result.stayHours) -
+                        (a.result.effectiveStayHours ?? a.result.stayHours)
                 )[0];
 
         const bestDeal =
@@ -9894,7 +10137,14 @@ function applyResultFilters(
             isEuropeanCountry,
             selectBalancedCandidates,
             trimCache,
-            effectiveWorkerLimit
+            effectiveWorkerLimit,
+            airportAccessFor,
+            effectiveStayHours,
+            priceModel,
+            compactJsonFlights,
+            parseDescriptor,
+            classifyPageState,
+            cacheUrl
         };
         return;
     }

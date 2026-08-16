@@ -14,12 +14,15 @@ from urllib.parse import urlencode
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 
-AIRPORTS = ["AMS", "EIN", "RTM", "GRQ"]
+SHARED_RULES_PATH = Path(__file__).parent / "userscript" / "src" / "rules.json"
+SHARED_RULES = json.loads(SHARED_RULES_PATH.read_text(encoding="utf-8")) if SHARED_RULES_PATH.exists() else {}
+
+AIRPORTS = SHARED_RULES.get("airports", ["AMS", "EIN", "RTM", "GRQ"])
 CANDIDATE_PRICE = 250
 MAX_COUNTRY_CANDIDATES = 5
 MAX_CITY_CANDIDATES = 6
 MAX_DEAL_PRICE = 150
-FRIDAY_EARLIEST_DEPARTURE = "21:00"
+FRIDAY_EARLIEST_DEPARTURE = SHARED_RULES.get("fridayEarliestDeparture", "21:00")
 
 NAVIGATION_PAUSE_MS = 850
 FAST_POLL_MS = 400

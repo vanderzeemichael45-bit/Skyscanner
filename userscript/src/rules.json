@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "airports": ["AMS", "EIN", "RTM", "GRQ"],
+  "fridayEarliestDeparture": "21:00",
+  "nearPriceTolerance": 7,
+  "defaultMaxStops": 0,
+  "defaultDestinationTransferMinutes": 45,
+  "defaultReturnAirportBufferMinutes": 120,
+  "scenarios": ["fri-mon", "fri-sun", "sat-mon"]
+}
