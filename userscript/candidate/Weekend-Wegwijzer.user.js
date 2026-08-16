@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Weekend Wegwijzer Candidate
 // @namespace    weekend-wegwijzer-candidate
-// @version      4.0.1
-// @description  Candidate 4.0.1: beschikbaarheidsvensters met herstelde land- en stadsuitlezing
+// @version      4.0.2
+// @description  Candidate 4.0.2: eigen reisperioden zonder automatische weekendtijdslimieten
 // @match        https://www.skyscanner.nl/*
 // @grant        none
 // @run-at       document-start
@@ -984,7 +984,7 @@
                 outbound: toSkyDate(new Date(`${custom.outboundDate}T12:00:00`)),
                 inbound: toSkyDate(new Date(`${custom.inboundDate}T12:00:00`)),
                 earliestOutbound: custom.earliestDeparture || '',
-                homeDeadline: custom.homeDeadline || settings.homeDeadline || CONFIG.defaultHomeDeadline,
+                homeDeadline: custom.homeDeadline || '',
                 fridayDeparture: false,
                 fridayFree: false,
                 custom: true
@@ -1018,6 +1018,7 @@
                 outbound: toSkyDate(thursday),
                 inbound: toSkyDate(monday),
                 earliestOutbound: CONFIG.thursdayEarliestDeparture,
+                homeDeadline: settings.homeDeadline || CONFIG.defaultHomeDeadline,
                 fridayDeparture: false,
                 fridayFree: true
             });
@@ -1041,6 +1042,8 @@
 
                 earliestOutbound: fridayFree ? '' : CONFIG.fridayEarliestDeparture,
 
+                homeDeadline: settings.homeDeadline || CONFIG.defaultHomeDeadline,
+
                 fridayFree
             },
 
@@ -1055,6 +1058,9 @@
 
                 inbound:
                     toSkyDate(monday),
+
+                homeDeadline:
+                    settings.homeDeadline || CONFIG.defaultHomeDeadline,
 
                 fridayDeparture:
                     false,
@@ -3188,7 +3194,12 @@
                 scenario.label,
 
             scenarioHomeDeadline:
-                scenario.homeDeadline || settings.homeDeadline,
+                scenario.custom
+                    ? (scenario.homeDeadline || '')
+                    : (scenario.homeDeadline || settings.homeDeadline),
+
+            customScenario:
+                Boolean(scenario.custom),
 
             scenarioInbound:
                 scenario.inbound,
@@ -3260,9 +3271,9 @@
             }
         }
 
-        const homeDeadline =
-            flight.scenarioHomeDeadline ||
-            settings.homeDeadline;
+        const homeDeadline = flight.customScenario
+            ? flight.scenarioHomeDeadline
+            : (flight.scenarioHomeDeadline || settings.homeDeadline);
 
         if (homeDeadline) {
             const expectedHome = expectedHomeArrivalMinutes(flight, settings);
@@ -5515,14 +5526,14 @@ function applyResultFilters(
                     <label style="font-size:10px">Heenreis
                         <input id="ww-custom-outbound-date" type="date" value="${toInputDate(friday)}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
                     </label>
-                    <label style="font-size:10px">Vertrek vanaf
-                        <input id="ww-custom-outbound-time" type="time" value="21:30" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                    <label style="font-size:10px">Vertrek vanaf (optioneel)
+                        <input id="ww-custom-outbound-time" type="time" value="" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
                     </label>
                     <label style="font-size:10px">Terugreis
                         <input id="ww-custom-inbound-date" type="date" value="${toInputDate(monday)}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
                     </label>
-                    <label style="font-size:10px">Uiterlijk thuis
-                        <input id="ww-custom-home-time" type="time" value="${settings.homeDeadline || CONFIG.defaultHomeDeadline}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                    <label style="font-size:10px">Uiterlijk thuis (optioneel)
+                        <input id="ww-custom-home-time" type="time" value="" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
                     </label>
                 </div>
 
@@ -5665,7 +5676,7 @@ function applyResultFilters(
                         outboundDate,
                         inboundDate,
                         earliestDeparture: panel.querySelector('#ww-custom-outbound-time')?.value || '',
-                        homeDeadline: panel.querySelector('#ww-custom-home-time')?.value || customSettings.homeDeadline
+                        homeDeadline: panel.querySelector('#ww-custom-home-time')?.value || ''
                     };
 
                     startSingleScan(
@@ -8733,7 +8744,7 @@ function applyResultFilters(
     function diagnosticSnapshot() {
         return {
             product: 'Weekend Wegwijzer',
-            version: '4.0.1',
+            version: '4.0.2',
             generatedAt: new Date().toISOString(),
             page: { origin: location.origin, path: location.pathname },
             settings: activeScan?.settings || loadSettings(),

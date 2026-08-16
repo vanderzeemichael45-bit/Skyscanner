@@ -1,5 +1,11 @@
 # Wijzigingen
 
+## Candidate 4.0.2
+
+- Laat tijdsbeperkingen bij een eigen reisperiode standaard leeg en optioneel.
+- Voorkom dat eigen, niet-weekenddata automatisch de weekendregels van 21:30 en 23:00 erven.
+- Pas een tijdsgrens bij eigen data alleen toe wanneer die expliciet is ingevuld.
+
 ## Candidate 4.0.1
 
 - Herstel de land-naar-staduitlezing voor zowel eigen perioden als automatische weekendscans.
