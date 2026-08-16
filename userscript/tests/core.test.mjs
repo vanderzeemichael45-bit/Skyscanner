@@ -170,6 +170,15 @@ test('availability profile adds Thursday evening only to the final weekend of a 
   ]);
 });
 
+test('automatic weekend scenarios retain the Monday home deadline', () => {
+  const core = loadCore();
+  const settings = { homeDeadline: '23:00' };
+  const normal = core.createScenarios(new Date('2026-08-22T12:00:00'), settings);
+  const finalWeekend = core.createScenarios(new Date('2026-08-29T12:00:00'), settings);
+  assert.deepEqual(Array.from(normal, scenario => scenario.homeDeadline), ['23:00', '23:00']);
+  assert.deepEqual(Array.from(finalWeekend, scenario => scenario.homeDeadline), ['23:00', '23:00', '23:00']);
+});
+
 test('custom availability window keeps exact dates and times', () => {
   const core = loadCore();
   const scenarios = core.createScenarios(new Date('2026-09-01T12:00:00'), {
@@ -186,6 +195,22 @@ test('custom availability window keeps exact dates and times', () => {
   assert.equal(scenarios[0].inbound, '260914');
   assert.equal(scenarios[0].earliestOutbound, '18:45');
   assert.equal(scenarios[0].homeDeadline, '22:30');
+});
+
+test('custom dates do not inherit weekend time restrictions', () => {
+  const core = loadCore();
+  const scenarios = core.createScenarios(new Date('2026-09-01T12:00:00'), {
+    homeDeadline: '23:00',
+    customWindow: {
+      active: true,
+      outboundDate: '2026-09-09',
+      inboundDate: '2026-09-16',
+      earliestDeparture: '',
+      homeDeadline: ''
+    }
+  });
+  assert.equal(scenarios[0].earliestOutbound, '');
+  assert.equal(scenarios[0].homeDeadline, '');
 });
 
 test('return flight is rejected when airport transfer misses the home deadline', () => {
