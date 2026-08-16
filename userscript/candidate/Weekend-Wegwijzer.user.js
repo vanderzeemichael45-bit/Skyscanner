@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Weekend Wegwijzer Candidate
 // @namespace    weekend-wegwijzer-candidate
-// @version      3.9.0
-// @description  Candidate 3.9.0: eerlijke deur-tot-deurkosten, effectieve weekendtijd en slimmer zoeken
+// @version      4.0.0
+// @description  Candidate 4.0.0: slimme beschikbaarheidsvensters, uiterlijk-thuisfilter en efficiënter zoeken
 // @match        https://www.skyscanner.nl/*
 // @grant        none
 // @run-at       document-start
@@ -51,12 +51,21 @@
 
         /*
          * Normale vrijdag:
-         * vertrek pas vanaf 21:00.
+         * vertrek pas vanaf 21:30.
          *
          * Laatste vrijdag van de maand:
          * hele vrijdag telt mee.
          */
-        fridayEarliestDeparture: '21:00',
+        fridayEarliestDeparture: '21:30',
+        thursdayEarliestDeparture: '21:30',
+        defaultHomeDeadline: '23:00',
+        defaultHomeArrivalMarginMinutes: 30,
+
+        // Late vertrekvensters hebben aantoonbaar minder opbrengst; controleer eerst de kansrijkste routes.
+        lateCountryCandidatesPerAirport: 6,
+        lateMaxCountryCandidateCount: 24,
+        lateCityCandidatesPerAirport: 12,
+        lateMaxCityCandidateCount: 60,
 
         /*
          * Indicatieve prijzen bepalen alleen prioriteit.
@@ -108,9 +117,9 @@
             history: 'weekendWegwijzer_history',
 
             // Cacheversie voorkomt dat gewijzigde parsers oude resultaten hergebruiken.
-            cacheExplore: 'weekendWegwijzer_cache_explore_v380',
-            cacheCountry: 'weekendWegwijzer_cache_country_v380',
-            cacheFlight: 'weekendWegwijzer_cache_flight_v380',
+            cacheExplore: 'weekendWegwijzer_cache_explore_v400',
+            cacheCountry: 'weekendWegwijzer_cache_country_v400',
+            cacheFlight: 'weekendWegwijzer_cache_flight_v400',
 
             panel: 'weekendWegwijzer_panel'
         }
@@ -199,6 +208,9 @@
             minStayHours: 0,
 
             earliestReturn: '',
+
+            homeDeadline: CONFIG.defaultHomeDeadline,
+            homeArrivalMarginMinutes: CONFIG.defaultHomeArrivalMarginMinutes,
 
             sortMode: 'price',
 
@@ -963,7 +975,22 @@
     }
 
 
-    function createScenarios(saturday) {
+    function createScenarios(saturday, settings = {}) {
+        if (settings.customWindow?.active) {
+            const custom = settings.customWindow;
+            return [{
+                id: 'custom',
+                label: 'Eigen periode',
+                outbound: toSkyDate(new Date(`${custom.outboundDate}T12:00:00`)),
+                inbound: toSkyDate(new Date(`${custom.inboundDate}T12:00:00`)),
+                earliestOutbound: custom.earliestDeparture || '',
+                homeDeadline: custom.homeDeadline || settings.homeDeadline || CONFIG.defaultHomeDeadline,
+                fridayDeparture: false,
+                fridayFree: false,
+                custom: true
+            }];
+        }
+
         const friday =
             addDays(
                 saturday,
@@ -981,7 +1008,22 @@
                 friday
             );
 
-        return [
+        const scenarios = [];
+
+        if (fridayFree) {
+            const thursday = addDays(friday, -1);
+            scenarios.push({
+                id: 'thu-mon',
+                label: 'Donderdagavond → maandag',
+                outbound: toSkyDate(thursday),
+                inbound: toSkyDate(monday),
+                earliestOutbound: CONFIG.thursdayEarliestDeparture,
+                fridayDeparture: false,
+                fridayFree: true
+            });
+        }
+
+        scenarios.push(
             {
                 id: 'fri-mon',
 
@@ -996,6 +1038,8 @@
 
                 fridayDeparture:
                     true,
+
+                earliestOutbound: fridayFree ? '' : CONFIG.fridayEarliestDeparture,
 
                 fridayFree
             },
@@ -1017,7 +1061,9 @@
 
                 fridayFree
             }
-        ];
+        );
+
+        return scenarios;
     }
 
 
@@ -1814,6 +1860,25 @@
                     )
             });
         }
+
+        activeScan.phase = 'complete';
+        activeScan.resultSnapshot = output.flatMap(item =>
+            item.results.slice(0, CONFIG.topCount).map(result => ({
+                weekend: weekendKey(item.saturday),
+                city: result.city,
+                country: result.country,
+                airport: result.airport,
+                scenario: result.scenarioId,
+                flightPrice: result.price,
+                totalPrice: result.totalPrice,
+                priceIncomplete: result.priceIncomplete,
+                priceVolatile: result.priceVolatile,
+                effectiveStayHours: result.effectiveStayHours,
+                outboundDeparture: result.outboundDeparture,
+                inboundArrival: result.inboundArrival,
+                expectedHomeMinutes: expectedHomeArrivalMinutes(result, settings)
+            }))
+        );
 
         return output;
     }
@@ -3032,10 +3097,7 @@
         flight,
         scenario
     ) {
-        if (
-            scenario.fridayDeparture &&
-            !scenario.fridayFree
-        ) {
+        if (scenario.earliestOutbound) {
             const actual =
                 timeToMinutes(
                     flight
@@ -3043,10 +3105,7 @@
                 );
 
             const minimum =
-                timeToMinutes(
-                    CONFIG
-                        .fridayEarliestDeparture
-                );
+                timeToMinutes(scenario.earliestOutbound);
 
             if (
                 actual === null ||
@@ -3057,6 +3116,53 @@
         }
 
         return true;
+    }
+
+
+    function minutesToClock(minutes) {
+        if (!Number.isFinite(minutes)) return '—';
+        const normalized = ((Math.round(minutes) % 1440) + 1440) % 1440;
+        return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
+    }
+
+
+    function formatAvailability(saturday, settings = {}) {
+        const custom = settings.customWindow;
+        if (!custom?.active) return formatWeekend(saturday);
+        const outbound = new Date(`${custom.outboundDate}T12:00:00`);
+        const inbound = new Date(`${custom.inboundDate}T12:00:00`);
+        return `${formatDate(outbound)} ${custom.earliestDeparture ? `vanaf ${custom.earliestDeparture}` : ''} → ${formatDate(inbound)} · thuis vóór ${custom.homeDeadline || settings.homeDeadline}`;
+    }
+
+
+    function expectedHomeArrivalMinutes(flight, settings) {
+        let landing = timeToMinutes(flight.inboundArrival);
+        if (landing === null) return null;
+
+        if (flight.inboundArrivalIso && /^\d{6}$/.test(flight.scenarioInbound || '')) {
+            const sky = flight.scenarioInbound;
+            const dateMatch = String(flight.inboundArrivalIso)
+                .match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+            if (dateMatch) {
+                const plannedDay = Date.UTC(
+                    Number(`20${sky.slice(0, 2)}`),
+                    Number(sky.slice(2, 4)) - 1,
+                    Number(sky.slice(4, 6))
+                );
+                const actualDay = Date.UTC(
+                    Number(dateMatch[1]),
+                    Number(dateMatch[2]) - 1,
+                    Number(dateMatch[3])
+                );
+                const dayOffset = Math.max(0, Math.round((actualDay - plannedDay) / 86400000));
+                landing += dayOffset * 1440;
+            }
+        }
+
+        const access = airportAccessFor(settings, flight.airport);
+        const margin = Math.max(0, Number(settings.homeArrivalMarginMinutes) || 0);
+        return landing + access.minutes + margin;
     }
 
 
@@ -3071,6 +3177,16 @@
             flight.inboundDepartureIso
         );
         const pricing = priceModel(flight.price, city.airport, settings);
+        const indicativePrice = Number(city.price);
+        const priceDifference = Number.isFinite(indicativePrice)
+            ? Math.abs(Number(flight.price) - indicativePrice)
+            : null;
+        const priceVolatile = priceDifference !== null &&
+            priceDifference >= Math.max(25, indicativePrice * 0.2);
+        const expectedHomeMinutes = expectedHomeArrivalMinutes(
+            { ...flight, airport: city.airport, scenarioInbound: scenario.inbound },
+            settings
+        );
 
         return {
             ...flight,
@@ -3090,6 +3206,12 @@
             scenarioLabel:
                 scenario.label,
 
+            scenarioHomeDeadline:
+                scenario.homeDeadline || settings.homeDeadline,
+
+            scenarioInbound:
+                scenario.inbound,
+
             fridayFree:
                 scenario.fridayFree,
 
@@ -3103,7 +3225,11 @@
             baggageKnown: pricing.baggageKnown,
             accessMinutes: pricing.access.minutes,
             accessCost: pricing.access.cost,
-            travelers: pricing.travelers
+            travelers: pricing.travelers,
+            indicativePrice: Number.isFinite(indicativePrice) ? indicativePrice : null,
+            priceDifference,
+            priceVolatile,
+            expectedHomeMinutes
         };
     }
 
@@ -3148,6 +3274,23 @@
             if (
                 actual === null ||
                 actual < minimum
+            ) {
+                return false;
+            }
+        }
+
+        const homeDeadline =
+            flight.scenarioHomeDeadline ||
+            settings.homeDeadline;
+
+        if (homeDeadline) {
+            const expectedHome = expectedHomeArrivalMinutes(flight, settings);
+            const latest = timeToMinutes(homeDeadline);
+
+            if (
+                expectedHome === null ||
+                latest === null ||
+                expectedHome > latest
             ) {
                 return false;
             }
@@ -3554,7 +3697,7 @@
             ...result,
             recommendationTags: [
                 result === cheapest ? 'Goedkoopste totaal' : '',
-                result === longest ? 'Meeste weekendtijd' : '',
+                result === longest ? 'Meeste tijd op bestemming' : '',
                 result === bestDeal ? 'Beste balans' : '',
                 result === nearest ? 'Dichtstbijzijnde luchthaven' : ''
             ].filter(Boolean)
@@ -4186,7 +4329,8 @@ function applyResultFilters(
     ) {
         const scenarios =
             createScenarios(
-                saturday
+                saturday,
+                settings
             );
 
         const scenarioStates =
@@ -4268,6 +4412,8 @@ function applyResultFilters(
 
     function emptyTimings() {
         return {
+            firstResultAt: null,
+
             exploreStarted: null,
             exploreEnded: null,
 
@@ -4416,12 +4562,27 @@ function applyResultFilters(
         const partial = states.flatMap(state => groupDestinations(state.flights));
         const ranked = addRecommendationTags(sortDestinations(partial, 'deal')).slice(0, 3);
         if (!ranked.length) return;
+        if (activeScan && !activeScan.timings.firstResultAt) {
+            activeScan.timings.firstResultAt = Date.now();
+        }
         target.style.display = 'block';
+        const canFinish = (activeScan?.stats?.uniqueFound || 0) >= CONFIG.topCount;
         target.innerHTML = `<strong>Al gevonden</strong>${ranked.map(result => `
             <div style="display:flex;justify-content:space-between;gap:8px;margin-top:5px">
                 <span>${escapeHtml(result.city)} · ${formatHours(result.effectiveStayHours ?? result.stayHours)}</span>
                 <strong>${euro(result.floorTotalPrice ?? result.floorPrice)}</strong>
-            </div>`).join('')}`;
+            </div>`).join('')}${canFinish ? `
+                <button id="ww-finish-early" type="button" style="width:100%;margin-top:8px;padding:7px;border:0;border-radius:7px;cursor:pointer;font-weight:700">
+                    Toon deze resultaten nu
+                </button>` : ''}`;
+
+        target.querySelector('#ww-finish-early')?.addEventListener('click', () => {
+            if (!activeScan || activeScan.finishEarly) return;
+            activeScan.finishEarly = true;
+            activeScan.phase = 'finishing';
+            activeScan.queue?.cancelQueued();
+            target.querySelector('#ww-finish-early')?.remove();
+        });
     }
 
 
@@ -4986,6 +5147,12 @@ function applyResultFilters(
 
                 <div style="margin-top:13px;font-size:10px;opacity:.55">EERLIJKE REISVERGELIJKING</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
+                    <label style="font-size:11px">Uiterlijk thuis
+                        <input id="ww-home-deadline" type="time" value="${settings.homeDeadline || CONFIG.defaultHomeDeadline}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                    </label>
+                    <label style="font-size:11px">Marge na landing
+                        <input id="ww-home-margin" type="number" min="0" step="15" value="${settings.homeArrivalMarginMinutes}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                    </label>
                     <label style="font-size:11px">Reizigers
                         <input id="ww-travelers" type="number" min="1" max="9" value="${settings.travelers}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
                     </label>
@@ -5024,6 +5191,9 @@ function applyResultFilters(
                             <input class="ww-access-minutes" data-airport="${airport}" type="number" min="0" step="5" value="${access.minutes || ''}" placeholder="minuten" style="width:100%;box-sizing:border-box;padding:7px;border:0;border-radius:7px">
                             <input class="ww-access-cost" data-airport="${airport}" type="number" min="0" step="1" value="${access.cost || ''}" placeholder="€ retour" style="width:100%;box-sizing:border-box;padding:7px;border:0;border-radius:7px">`;
                     }).join('')}
+                </div>
+                <div style="margin-top:6px;font-size:9px;opacity:.58">
+                    De thuiskomstgrens gebruikt landing + enkele-reistijd + marge. Bij 0 minuten is de luchthavenrit nog niet meegerekend.
                 </div>
             </details>
         `;
@@ -5108,6 +5278,13 @@ function applyResultFilters(
                     )
                     ?.value ||
                 '',
+
+            homeDeadline:
+                panel.querySelector('#ww-home-deadline')?.value ||
+                CONFIG.defaultHomeDeadline,
+
+            homeArrivalMarginMinutes:
+                Math.max(0, Number(panel.querySelector('#ww-home-margin')?.value) || 0),
 
             travelers: Math.max(1, Number(panel.querySelector('#ww-travelers')?.value) || 1),
             baggage: panel.querySelector('#ww-baggage')?.value || 'personal',
@@ -5287,7 +5464,7 @@ function applyResultFilters(
 
         panel.innerHTML = `
             ${headerHtml(
-                'Waar gaat je volgende weekend heen?'
+                'Wanneer kun je weg?'
             )}
 
             <div style="
@@ -5321,9 +5498,10 @@ function applyResultFilters(
                         isLastFridayOfMonth(
                             friday
                         )
-                            ? '🌅 Vrije vrijdag: ook vroege vrijdagvluchten tellen mee.'
-                            : '🌙 Vrijdagvluchten tellen mee vanaf 21:00.'
+                            ? '🌅 Lang weekend: donderdag vanaf 21:30, vrijdag de hele dag en zaterdag.'
+                            : '🌙 Vrijdagvluchten tellen mee vanaf 21:30; zaterdag blijft een alternatief.'
                     }
+                    <br>🏠 Maandag uiterlijk ${escapeHtml(settings.homeDeadline || CONFIG.defaultHomeDeadline)} thuis.
                 </div>
 
                 <button
@@ -5350,23 +5528,22 @@ function applyResultFilters(
                 border-radius:11px;
                 background:rgba(255,255,255,.055);
             ">
-                <strong>
-                    📅 Ander weekend
-                </strong>
+                <strong>📅 Eigen reisperiode</strong>
 
-                <input
-                    id="ww-date"
-                    type="date"
-                    value="${toInputDate(saturday)}"
-                    style="
-                        width:100%;
-                        box-sizing:border-box;
-                        margin-top:8px;
-                        padding:8px;
-                        border:0;
-                        border-radius:7px;
-                    "
-                >
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px">
+                    <label style="font-size:10px">Heenreis
+                        <input id="ww-custom-outbound-date" type="date" value="${toInputDate(friday)}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                    </label>
+                    <label style="font-size:10px">Vertrek vanaf
+                        <input id="ww-custom-outbound-time" type="time" value="21:30" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                    </label>
+                    <label style="font-size:10px">Terugreis
+                        <input id="ww-custom-inbound-date" type="date" value="${toInputDate(monday)}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                    </label>
+                    <label style="font-size:10px">Uiterlijk thuis
+                        <input id="ww-custom-home-time" type="time" value="${settings.homeDeadline || CONFIG.defaultHomeDeadline}" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px;border:0;border-radius:7px">
+                    </label>
+                </div>
 
                 <button
                     id="ww-custom-start"
@@ -5380,7 +5557,7 @@ function applyResultFilters(
                         font-weight:700;
                     "
                 >
-                    Zoek dit weekend
+                    Zoek deze periode
                 </button>
             </div>
 
@@ -5493,30 +5670,26 @@ function applyResultFilters(
             ?.addEventListener(
                 'click',
                 () => {
-                    const value =
-                        panel
-                            .querySelector(
-                                '#ww-date'
-                            )
-                            ?.value;
+                    const outboundDate = panel.querySelector('#ww-custom-outbound-date')?.value;
+                    const inboundDate = panel.querySelector('#ww-custom-inbound-date')?.value;
 
-                    if (!value) {
+                    if (!outboundDate || !inboundDate || inboundDate < outboundDate) {
                         return;
                     }
 
-                    const selected =
-                        getSaturdayForSelectedWeekend(
-                            new Date(
-                                `${value}T12:00:00`
-                            )
-                        );
+                    const selected = new Date(`${outboundDate}T12:00:00`);
+                    const customSettings = readSettingsFromForm(panel);
+                    customSettings.customWindow = {
+                        active: true,
+                        outboundDate,
+                        inboundDate,
+                        earliestDeparture: panel.querySelector('#ww-custom-outbound-time')?.value || '',
+                        homeDeadline: panel.querySelector('#ww-custom-home-time')?.value || customSettings.homeDeadline
+                    };
 
                     startSingleScan(
                         selected,
-
-                        readSettingsFromForm(
-                            panel
-                        )
+                        customSettings
                     );
                 }
             );
@@ -5680,7 +5853,7 @@ function applyResultFilters(
 
         panel.innerHTML = `
             ${headerHtml(
-                'Je weekend wordt samengesteld'
+                'Je reisvenster wordt onderzocht'
             )}
 
             ${
@@ -5708,8 +5881,9 @@ function applyResultFilters(
                             font-weight:700;
                         ">
                             ${
-                                formatWeekend(
-                                    weekends[0]
+                                formatAvailability(
+                                    weekends[0],
+                                    activeScan?.settings
                                 )
                             }
                         </div>
@@ -6280,6 +6454,7 @@ function applyResultFilters(
         scenarioState,
         allStates
     ) {
+        const lateWindow = Boolean(scenarioState.scenario.earliestOutbound);
         const candidates =
             selectBalancedCandidates(
                 scenarioState
@@ -6289,11 +6464,13 @@ function applyResultFilters(
                     .settings
                     .airports,
 
-                CONFIG
-                    .cityCandidatesPerAirport,
+                lateWindow
+                    ? CONFIG.lateCityCandidatesPerAirport
+                    : CONFIG.cityCandidatesPerAirport,
 
-                CONFIG
-                    .maxCityCandidateCount
+                lateWindow
+                    ? CONFIG.lateMaxCityCandidateCount
+                    : CONFIG.maxCityCandidateCount
             );
 
         for (
@@ -6584,7 +6761,7 @@ function applyResultFilters(
                     return response;
                 },
 
-                100 +
+                (lateWindow ? 5000 : 100) +
                 city.price
             );
         }
@@ -6799,6 +6976,7 @@ function applyResultFilters(
                             scenario.id
                         );
 
+                const lateWindow = Boolean(scenario.earliestOutbound);
                 const countries =
                     selectBalancedCandidates(
                         scenarioState
@@ -6806,11 +6984,13 @@ function applyResultFilters(
 
                         settings.airports,
 
-                        CONFIG
-                            .countryCandidatesPerAirport,
+                        lateWindow
+                            ? CONFIG.lateCountryCandidatesPerAirport
+                            : CONFIG.countryCandidatesPerAirport,
 
-                        CONFIG
-                            .maxCountryCandidateCount
+                        lateWindow
+                            ? CONFIG.lateMaxCountryCandidateCount
+                            : CONFIG.maxCountryCandidateCount
                     );
 
                 for (
@@ -7208,6 +7388,9 @@ function applyResultFilters(
             cancelled:
                 false,
 
+            finishEarly:
+                false,
+
             phase:
                 'starting',
 
@@ -7227,7 +7410,9 @@ function applyResultFilters(
             trace: {
                 countries: [],
                 cities: []
-            }
+            },
+
+            resultSnapshot: []
         };
     }
 
@@ -7843,8 +8028,7 @@ function applyResultFilters(
         `;
 
         const longWeekend =
-            result.scenarioId ===
-            'fri-mon';
+            ['thu-mon', 'fri-mon'].includes(result.scenarioId);
 
         const filteredVariantNotice =
             result.filteredVariant
@@ -8026,7 +8210,9 @@ function applyResultFilters(
                 </span>
 
                 ${
-                    longWeekend
+                    result.scenarioId === 'custom'
+                        ? `<span style="padding:3px 6px;border-radius:5px;background:rgba(139,92,246,.15);font-size:10px;font-weight:700">📅 Eigen periode</span>`
+                        : longWeekend
                         ? `
                             <span style="
                                 padding:3px 6px;
@@ -8082,11 +8268,20 @@ function applyResultFilters(
                     }
                 </span>
 
+                <span title="Landing plus ingestelde reistijd naar huis en marge" style="padding:3px 6px;border-radius:5px;background:rgba(255,255,255,.07);font-size:10px">
+                    🏠 circa ${minutesToClock(result.expectedHomeMinutes)} thuis
+                </span>
+
                 ${
                     priceChangeHtml(
                         result
                     )
                 }
+                ${result.priceVolatile ? `
+                    <span title="De concrete vluchtprijs wijkt sterk af van de eerdere indicatie" style="padding:3px 6px;border-radius:5px;background:rgba(245,158,11,.18);font-size:10px;font-weight:700">
+                        ⚠ prijs sterk gewijzigd
+                    </span>
+                ` : ''}
             </div>
 
             <div style="
@@ -8538,16 +8733,18 @@ function applyResultFilters(
     function diagnosticSnapshot() {
         return {
             product: 'Weekend Wegwijzer',
-            version: '3.9.0',
+            version: '4.0.0',
             generatedAt: new Date().toISOString(),
             page: { origin: location.origin, path: location.pathname },
-            settings: loadSettings(),
+            settings: activeScan?.settings || loadSettings(),
             scan: activeScan ? {
                 phase: activeScan.phase,
                 cancelled: activeScan.cancelled,
+                finishedEarly: activeScan.finishEarly,
                 stats: activeScan.stats,
                 timings: activeScan.timings,
-                trace: activeScan.trace
+                trace: activeScan.trace,
+                results: activeScan.resultSnapshot
             } : null
         };
     }
@@ -8606,6 +8803,10 @@ function applyResultFilters(
                 )
                 : 0;
 
+        const firstResultMs = timings?.firstResultAt
+            ? timings.firstResultAt - activeScan.started
+            : 0;
+
         return `
             <details
                 id="ww-diagnosis"
@@ -8663,6 +8864,9 @@ function applyResultFilters(
                             )
                             : '—'
                     }
+
+                    · Eerste resultaat:
+                    ${firstResultMs ? formatElapsed(firstResultMs) : '—'}
 
                     <br><br>
 
@@ -8802,7 +9006,7 @@ function applyResultFilters(
                 'Geen directe retour gevonden',
 
             REJECTED_BY_WEEKEND_RULE:
-                'Afgevallen door weekendregel',
+                'Afgevallen door beschikbaarheidsvenster',
 
             REJECTED_BY_SEARCH_FILTERS:
                 'Afgevallen door zoekfilters',
@@ -9152,7 +9356,7 @@ function applyResultFilters(
                                                 item.rawFlightCount
                                             }
 
-                                            · na weekendregel:
+                                            · binnen beschikbaarheidsvenster:
                                             ${
                                                 item.allowedWeekendCount
                                             }
@@ -9246,7 +9450,7 @@ function applyResultFilters(
 
         panel.innerHTML = `
             ${headerHtml(
-                'Je beste weekenddeals'
+                'Je beste reisopties'
             )}
 
             <div style="
@@ -9254,8 +9458,9 @@ function applyResultFilters(
                 font-weight:800;
             ">
                 ${
-                    formatWeekend(
-                        saturday
+                    formatAvailability(
+                        saturday,
+                        settings
                     )
                 }
             </div>
@@ -10141,6 +10346,9 @@ function applyResultFilters(
             airportAccessFor,
             effectiveStayHours,
             priceModel,
+            createScenarios,
+            expectedHomeArrivalMinutes,
+            passesSearchFilters,
             compactJsonFlights,
             parseDescriptor,
             classifyPageState,

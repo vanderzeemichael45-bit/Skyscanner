@@ -7,7 +7,7 @@ Dit is de tweede cloudtest van de Weekend Optimizer. De zoekregels zijn nog deze
 Naast de Python/Playwright-radar bevat deze repository nu ook het afzonderlijke Tampermonkey-project in [`userscript/`](userscript/README.md):
 
 - Stable `3.7.1` blijft de ongewijzigde, eerder gebruikte versie.
-- Candidate `3.9.0` bevat daarnaast deur-tot-deurkosten, effectieve weekendtijd, progressieve resultaten en optioneel één overstap.
+- Candidate `4.0.0` bevat daarnaast beschikbaarheidsvensters, een uiterlijk-thuisfilter, deur-tot-deurkosten en progressieve resultaten.
 - Candidate heeft een eigen automatisch Tampermonkey-updatekanaal via GitHub.
 
 Beide implementaties blijven bewust gescheiden: de Python-radar draait in GitHub Actions, terwijl Weekend Wegwijzer in je eigen browser op Skyscanner draait.
@@ -30,7 +30,7 @@ De radar gebruikt dezelfde kernregels als het prototype:
 
 - vertrek vanaf AMS, EIN, RTM en GRQ;
 - vrijdag → maandag, vrijdag → zondag en zaterdag → maandag;
-- op een normale vrijdag alleen vertrek vanaf 21:00;
+- op een normale vrijdag alleen vertrek vanaf 21:30;
 - op de laatste vrijdag van de maand vervalt die tijdsgrens;
 - ruime voorselectie tot €250;
 - score op prijs, verblijfsduur, heen-/terugtijd en rechtstreeks;

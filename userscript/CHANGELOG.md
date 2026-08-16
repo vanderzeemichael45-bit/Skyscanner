@@ -1,5 +1,15 @@
 # Wijzigingen
 
+## Candidate 4.0.0
+
+- Zoek gewone weekenden vanaf vrijdag 21:30 en het laatste maandweekend al vanaf donderdag 21:30.
+- Voeg een volledig eigen vertrek-/retourperiode met eigen tijden toe.
+- Filter terugvluchten op verwachte thuiskomst uiterlijk 23:00, inclusief luchthavenrit en marge.
+- Prioriteer kansrijke routes en beperk dure controles binnen late vertrekvensters.
+- Markeer grote verschillen tussen indicatieve en concrete vluchtprijzen.
+- Leg tijd tot eerste resultaat, correcte eindfase en zichtbare topresultaten vast in diagnoses.
+- Synchroniseer de nieuwe beschikbaarheidsregels met de Python-radar.
+
 ## Candidate 3.9.0
 
 - Schaal verborgen workers terug op lichtere apparaten en bij databesparing.
