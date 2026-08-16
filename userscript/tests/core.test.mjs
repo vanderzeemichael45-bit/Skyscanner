@@ -230,6 +230,38 @@ test('custom dates do not inherit weekend time restrictions', () => {
   assert.equal(scenarios[0].homeDeadline, '');
 });
 
+test('custom Friday to Monday dates inherit normal weekend restrictions', () => {
+  const core = loadCore();
+  const scenarios = core.createScenarios(new Date('2026-09-05T12:00:00'), {
+    homeDeadline: '23:00',
+    customWindow: {
+      active: true,
+      outboundDate: '2026-09-04',
+      inboundDate: '2026-09-07',
+      earliestDeparture: '',
+      homeDeadline: ''
+    }
+  });
+  assert.equal(scenarios[0].earliestOutbound, '21:30');
+  assert.equal(scenarios[0].homeDeadline, '23:00');
+});
+
+test('custom final monthly weekend keeps Friday free and Thursday late', () => {
+  const core = loadCore();
+  const friday = core.createScenarios(new Date('2026-08-29T12:00:00'), {
+    homeDeadline: '23:00',
+    customWindow: { active: true, outboundDate: '2026-08-28', inboundDate: '2026-08-31', earliestDeparture: '', homeDeadline: '' }
+  });
+  const thursday = core.createScenarios(new Date('2026-08-29T12:00:00'), {
+    homeDeadline: '23:00',
+    customWindow: { active: true, outboundDate: '2026-08-27', inboundDate: '2026-08-31', earliestDeparture: '', homeDeadline: '' }
+  });
+  assert.equal(friday[0].earliestOutbound, '');
+  assert.equal(friday[0].homeDeadline, '23:00');
+  assert.equal(thursday[0].earliestOutbound, '21:30');
+  assert.equal(thursday[0].homeDeadline, '23:00');
+});
+
 test('custom availability heading omits time limits that were not selected', () => {
   const core = loadCore();
   const heading = core.formatAvailability(new Date('2026-08-29T12:00:00'), {
