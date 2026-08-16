@@ -1,6 +1,6 @@
 # Wijzigingen
 
-## Candidate 3.8.1
+## Candidate 3.9.0
 
 - Schaal verborgen workers terug op lichtere apparaten en bij databesparing.
 - Verlaag de harde maxima van 9/9/6 naar 6/6/4 workers.
@@ -12,5 +12,11 @@
 - Voeg syntax-, logica- en architectuurtests toe.
 - Dedupliceer bestemmingen vóór de limiet per luchthaven, zodat dubbele Skyscanner-kaarten geen andere stad verdringen.
 - Gebruik het Candidate-bestand op GitHub als automatisch Tampermonkey-updatekanaal.
+- Bereken een transparant geschat reistotaal voor alle reizigers en markeer onbekende bagagekosten.
+- Trek bestemmingstransfers en de terugvluchtbuffer af van de bruikbare weekendtijd.
+- Ondersteun optioneel maximaal één overstap.
+- Toon tijdens het zoeken al voorlopige topresultaten en begin het eindscherm met vijf aanbevelingen.
+- Herken cookie-, captcha-, rate-limit- en toegangsblokkades afzonderlijk.
+- Deel kernregels met `radar.py` via `src/rules.json` en test Skyscanner-fixtures.
 
 Stable 3.7.1 is niet gewijzigd.

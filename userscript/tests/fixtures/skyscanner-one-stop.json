@@ -1,0 +1,27 @@
+{
+  "itineraries": {
+    "results": [
+      {
+        "price": { "raw": 109 },
+        "legs": [
+          {
+            "departure": "2026-09-04T20:00:00+02:00",
+            "arrival": "2026-09-05T00:10:00+02:00",
+            "stopCount": 1,
+            "origin": { "name": "Amsterdam" },
+            "destination": { "name": "Porto" },
+            "carriers": { "marketing": [{ "name": "Example Connect" }] }
+          },
+          {
+            "departure": "2026-09-07T17:00:00+01:00",
+            "arrival": "2026-09-07T22:00:00+02:00",
+            "stopCount": 1,
+            "origin": { "name": "Porto" },
+            "destination": { "name": "Amsterdam" },
+            "carriers": { "marketing": [{ "name": "Example Connect" }] }
+          }
+        ]
+      }
+    ]
+  }
+}

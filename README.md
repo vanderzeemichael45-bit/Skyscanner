@@ -7,7 +7,7 @@ Dit is de tweede cloudtest van de Weekend Optimizer. De zoekregels zijn nog deze
 Naast de Python/Playwright-radar bevat deze repository nu ook het afzonderlijke Tampermonkey-project in [`userscript/`](userscript/README.md):
 
 - Stable `3.7.1` blijft de ongewijzigde, eerder gebruikte versie.
-- Candidate `3.8.1` bevat de nieuwe worker-, cache-, diagnose- en betrouwbaarheidsverbeteringen.
+- Candidate `3.9.0` bevat daarnaast deur-tot-deurkosten, effectieve weekendtijd, progressieve resultaten en optioneel één overstap.
 - Candidate heeft een eigen automatisch Tampermonkey-updatekanaal via GitHub.
 
 Beide implementaties blijven bewust gescheiden: de Python-radar draait in GitHub Actions, terwijl Weekend Wegwijzer in je eigen browser op Skyscanner draait.

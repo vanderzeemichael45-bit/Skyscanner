@@ -7,7 +7,7 @@ const stable = fs.readFileSync('stable/Weekend-Wegwijzer.user.js', 'utf8').repla
 const requirements = [
   ['candidate name', /@name\s+Weekend Wegwijzer Candidate/],
   ['candidate namespace', /@namespace\s+weekend-wegwijzer-candidate/],
-  ['candidate version', /@version\s+3\.8\.1/],
+  ['candidate version', /@version\s+3\.9\.0/],
   ['candidate update URL', /@updateURL\s+https:\/\/raw\.githubusercontent\.com\/vanderzeemichael45-bit\/Skyscanner\/main\/userscript\/candidate\/Weekend-Wegwijzer\.user\.js/],
   ['Skyscanner scope', /@match\s+https:\/\/www\.skyscanner\.nl\/\*/],
   ['document-start', /@run-at\s+document-start/],
@@ -17,7 +17,12 @@ const requirements = [
   ['cache recovery', /clearOldestCacheHalf/],
   ['interceptor guard', /INTERCEPTOR_MARK/],
   ['worker cleanup', /pagehide.*cleanupPendingWorkers/],
-  ['diagnostic download', /downloadDiagnostics/]
+  ['diagnostic download', /downloadDiagnostics/],
+  ['door-to-door price model', /function priceModel/],
+  ['effective stay model', /function effectiveStayHours/],
+  ['optional one stop', /maxStops/],
+  ['block classification', /BOT_CHECK/],
+  ['progressive results', /ww-more-results/]
 ];
 
 const failures = requirements.filter(([, pattern]) => !pattern.test(candidate)).map(([label]) => label);
@@ -35,4 +40,4 @@ if (stableHash !== expectedStableHash) {
   console.error(`Stable changed unexpectedly: ${stableHash}`);
   process.exit(1);
 }
-console.log(`candidate audit: OK (3.8.1); stable 3.7.1 sha256 ${stableHash}`);
+console.log(`candidate audit: OK (3.9.0); stable 3.7.1 sha256 ${stableHash}`);
