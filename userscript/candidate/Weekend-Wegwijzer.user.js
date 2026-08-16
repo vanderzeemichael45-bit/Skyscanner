@@ -3140,17 +3140,24 @@
         if (landing === null) return null;
 
         if (flight.inboundArrivalIso && /^\d{6}$/.test(flight.scenarioInbound || '')) {
-            const arrival = new Date(flight.inboundArrivalIso);
             const sky = flight.scenarioInbound;
-            const planned = new Date(
-                Number(`20${sky.slice(0, 2)}`),
-                Number(sky.slice(2, 4)) - 1,
-                Number(sky.slice(4, 6)),
-                12
-            );
-            const actual = new Date(arrival.getFullYear(), arrival.getMonth(), arrival.getDate(), 12);
-            const dayOffset = Math.max(0, Math.round((actual - planned) / 86400000));
-            landing += dayOffset * 1440;
+            const dateMatch = String(flight.inboundArrivalIso)
+                .match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+            if (dateMatch) {
+                const plannedDay = Date.UTC(
+                    Number(`20${sky.slice(0, 2)}`),
+                    Number(sky.slice(2, 4)) - 1,
+                    Number(sky.slice(4, 6))
+                );
+                const actualDay = Date.UTC(
+                    Number(dateMatch[1]),
+                    Number(dateMatch[2]) - 1,
+                    Number(dateMatch[3])
+                );
+                const dayOffset = Math.max(0, Math.round((actualDay - plannedDay) / 86400000));
+                landing += dayOffset * 1440;
+            }
         }
 
         const access = airportAccessFor(settings, flight.airport);
