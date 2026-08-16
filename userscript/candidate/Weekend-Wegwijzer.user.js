@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Weekend Wegwijzer Candidate
 // @namespace    weekend-wegwijzer-candidate
-// @version      4.0.4
-// @description  Candidate 4.0.4: gecombineerde aanbevelingen en rustigere resultaatkop
+// @version      4.0.5
+// @description  Candidate 4.0.5: weekendregels gelden ook bij overeenkomstige eigen datums
 // @match        https://www.skyscanner.nl/*
 // @grant        none
 // @run-at       document-start
@@ -988,18 +988,50 @@
     }
 
 
+    function customAvailabilityRules(custom, settings = {}) {
+        const outbound = new Date(`${custom.outboundDate}T12:00:00`);
+        const inbound = new Date(`${custom.inboundDate}T12:00:00`);
+        const valid = Number.isFinite(outbound.getTime()) && Number.isFinite(inbound.getTime());
+        const exactReturn = days => valid && toInputDate(addDays(outbound, days)) === toInputDate(inbound);
+        const outboundDay = valid ? outbound.getDay() : -1;
+        const mondayReturn = valid && inbound.getDay() === 1;
+        const friday = outboundDay === 4 ? addDays(outbound, 1) : outbound;
+        const thursdayLongWeekend = mondayReturn && outboundDay === 4 && exactReturn(4) && isLastFridayOfMonth(friday);
+        const fridayWeekend = mondayReturn && outboundDay === 5 && exactReturn(3);
+        const saturdayWeekend = mondayReturn && outboundDay === 6 && exactReturn(2);
+        const isWeekend = thursdayLongWeekend || fridayWeekend || saturdayWeekend;
+        const fridayFree = (thursdayLongWeekend || fridayWeekend) && isLastFridayOfMonth(friday);
+
+        let inferredEarliest = '';
+        if (thursdayLongWeekend) inferredEarliest = CONFIG.thursdayEarliestDeparture;
+        if (fridayWeekend && !fridayFree) inferredEarliest = CONFIG.fridayEarliestDeparture;
+
+        return {
+            isWeekend,
+            fridayFree,
+            earliestOutbound: custom.earliestDeparture || inferredEarliest,
+            homeDeadline: custom.homeDeadline || (
+                isWeekend
+                    ? (settings.homeDeadline || CONFIG.defaultHomeDeadline)
+                    : ''
+            )
+        };
+    }
+
+
     function createScenarios(saturday, settings = {}) {
         if (settings.customWindow?.active) {
             const custom = settings.customWindow;
+            const availability = customAvailabilityRules(custom, settings);
             return [{
                 id: 'custom',
                 label: 'Eigen periode',
                 outbound: toSkyDate(new Date(`${custom.outboundDate}T12:00:00`)),
                 inbound: toSkyDate(new Date(`${custom.inboundDate}T12:00:00`)),
-                earliestOutbound: custom.earliestDeparture || '',
-                homeDeadline: custom.homeDeadline || '',
+                earliestOutbound: availability.earliestOutbound,
+                homeDeadline: availability.homeDeadline,
                 fridayDeparture: false,
-                fridayFree: false,
+                fridayFree: availability.fridayFree,
                 custom: true
             }];
         }
@@ -3129,12 +3161,13 @@
     function formatAvailability(saturday, settings = {}) {
         const custom = settings.customWindow;
         if (!custom?.active) return formatWeekend(saturday);
+        const availability = customAvailabilityRules(custom, settings);
         const outbound = new Date(`${custom.outboundDate}T12:00:00`);
         const inbound = new Date(`${custom.inboundDate}T12:00:00`);
         return [
-            `${formatDate(outbound)}${custom.earliestDeparture ? ` vanaf ${custom.earliestDeparture}` : ''}`,
+            `${formatDate(outbound)}${availability.earliestOutbound ? ` vanaf ${availability.earliestOutbound}` : ''}`,
             `→ ${formatDate(inbound)}`,
-            custom.homeDeadline ? `· thuis vóór ${custom.homeDeadline}` : ''
+            availability.homeDeadline ? `· thuis vóór ${availability.homeDeadline}` : ''
         ].filter(Boolean).join(' ');
     }
 
@@ -8683,7 +8716,7 @@ function applyResultFilters(
     function diagnosticSnapshot() {
         return {
             product: 'Weekend Wegwijzer',
-            version: '4.0.4',
+            version: '4.0.5',
             generatedAt: new Date().toISOString(),
             page: { origin: location.origin, path: location.pathname },
             settings: activeScan?.settings || loadSettings(),

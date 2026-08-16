@@ -1,5 +1,12 @@
 # Wijzigingen
 
+## Candidate 4.0.5
+
+- Herken vrijdag–maandag en zaterdag–maandag ook binnen `Eigen periode` als weekend.
+- Pas bij een normaal vrijdagweekend automatisch de grens van 21:30 en maandag 23:00 toe.
+- Behoud de vrije laatste vrijdag en herken het lange donderdag–maandagweekend.
+- Laat afwijkende doordeweekse eigen perioden zonder automatische tijdsgrenzen.
+
 ## Candidate 4.0.4
 
 - Start met één gecombineerde lijst: goedkoopste, langste verblijf en beste balans staan bovenaan zonder dubbelen.
