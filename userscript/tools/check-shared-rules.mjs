@@ -12,4 +12,7 @@ for (const airport of rules.airports) {
 if (!candidate.includes(`fridayEarliestDeparture: '${rules.fridayEarliestDeparture}'`)) {
   throw new Error('Candidate Friday rule differs from shared rules');
 }
+if (!candidate.includes(`thursdayEarliestDeparture: '${rules.thursdayEarliestDeparture}'`)) {
+  throw new Error('Candidate Thursday rule differs from shared rules');
+}
 console.log('shared rules: OK');

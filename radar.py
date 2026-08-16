@@ -22,7 +22,8 @@ CANDIDATE_PRICE = 250
 MAX_COUNTRY_CANDIDATES = 5
 MAX_CITY_CANDIDATES = 6
 MAX_DEAL_PRICE = 150
-FRIDAY_EARLIEST_DEPARTURE = SHARED_RULES.get("fridayEarliestDeparture", "21:00")
+FRIDAY_EARLIEST_DEPARTURE = SHARED_RULES.get("fridayEarliestDeparture", "21:30")
+THURSDAY_EARLIEST_DEPARTURE = SHARED_RULES.get("thursdayEarliestDeparture", "21:30")
 
 NAVIGATION_PAUSE_MS = 850
 FAST_POLL_MS = 400
@@ -47,6 +48,7 @@ class Scenario:
     inbound: date
     friday_departure: bool
     friday_free: bool
+    earliest_departure: str = ""
 
 
 @dataclass
@@ -121,14 +123,16 @@ def is_last_friday_of_month(day: date) -> bool:
 
 def scenarios_for(saturday: date) -> list[Scenario]:
     friday = saturday - timedelta(days=1)
-    sunday = saturday + timedelta(days=1)
     monday = saturday + timedelta(days=2)
     friday_free = is_last_friday_of_month(friday)
-    return [
-        Scenario("fri-mon", "Vrijdag → maandag", friday, monday, True, friday_free),
-        Scenario("fri-sun", "Vrijdag → zondag", friday, sunday, True, friday_free),
-        Scenario("sat-mon", "Zaterdag → maandag", saturday, monday, False, friday_free),
-    ]
+    scenarios: list[Scenario] = []
+    if friday_free:
+        scenarios.append(Scenario("thu-mon", "Donderdagavond → maandag", friday - timedelta(days=1), monday, False, True, THURSDAY_EARLIEST_DEPARTURE))
+    scenarios.extend([
+        Scenario("fri-mon", "Vrijdag → maandag", friday, monday, True, friday_free, "" if friday_free else FRIDAY_EARLIEST_DEPARTURE),
+        Scenario("sat-mon", "Zaterdag → maandag", saturday, monday, False, friday_free, ""),
+    ])
+    return scenarios
 
 
 def sky_date(day: date) -> str:
@@ -506,8 +510,9 @@ def outbound_score(flight: dict[str, Any], scenario: Scenario) -> int:
         if minutes < 18 * 60: return 8
         if minutes < 21 * 60: return 7
         return 6
-    if scenario.friday_departure:
-        if minutes < 21 * 60: return 0
+    if scenario.earliest_departure:
+        minimum = time_to_minutes(scenario.earliest_departure) or 0
+        if minutes < minimum: return 0
         if minutes < 22 * 60: return 10
         if minutes < 23 * 60: return 9
         return 8
@@ -543,9 +548,9 @@ def stay_hours(flight: dict[str, Any], scenario: Scenario) -> float:
 
 
 def is_allowed(flight: dict[str, Any], scenario: Scenario) -> bool:
-    if scenario.friday_departure and not scenario.friday_free:
+    if scenario.earliest_departure:
         departure = time_to_minutes(flight.get("outboundDeparture"))
-        minimum = time_to_minutes(FRIDAY_EARLIEST_DEPARTURE)
+        minimum = time_to_minutes(scenario.earliest_departure)
         return departure is not None and minimum is not None and departure >= minimum
     return True
 
@@ -808,7 +813,7 @@ def main() -> int:
     print(f"Weekend Radar Playwright v{VERSION}")
     print(f"Browserkanaal: {BROWSER_CHANNEL} (new headless mode)")
     print(f"Weekend: {saturday - timedelta(days=1)} t/m {saturday + timedelta(days=2)}")
-    print(f"Vrijdag vrij-regel: {'JA' if scenarios[0].friday_free else 'NEE; vertrek ≥ 21:00'}")
+    print(f"Vrijdag vrij-regel: {'JA; donderdag vanaf 21:30' if any(s.friday_free for s in scenarios) else 'NEE; vrijdag vertrek ≥ 21:30'}")
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     DEBUG_DIR.mkdir(parents=True, exist_ok=True)

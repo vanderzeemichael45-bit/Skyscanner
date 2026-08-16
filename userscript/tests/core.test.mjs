@@ -154,3 +154,57 @@ test('page-state diagnosis distinguishes bot checks and cookie walls', () => {
   assert.equal(loadCore({ pageText: 'Cookies accepteren' }).classifyPageState(), 'COOKIE_WALL');
   assert.equal(loadCore({ pageText: 'Geen vluchten gevonden' }).classifyPageState(), null);
 });
+
+test('availability profile adds Thursday evening only to the final weekend of a month', () => {
+  const core = loadCore();
+  const normal = Array.from(core.createScenarios(new Date('2026-08-22T12:00:00')), x => ({ id: x.id, earliest: x.earliestOutbound }));
+  assert.deepEqual(normal, [
+    { id: 'fri-mon', earliest: '21:30' },
+    { id: 'sat-mon', earliest: undefined }
+  ]);
+  const finalWeekend = Array.from(core.createScenarios(new Date('2026-08-29T12:00:00')), x => ({ id: x.id, earliest: x.earliestOutbound }));
+  assert.deepEqual(finalWeekend, [
+    { id: 'thu-mon', earliest: '21:30' },
+    { id: 'fri-mon', earliest: '' },
+    { id: 'sat-mon', earliest: undefined }
+  ]);
+});
+
+test('custom availability window keeps exact dates and times', () => {
+  const core = loadCore();
+  const scenarios = core.createScenarios(new Date('2026-09-01T12:00:00'), {
+    homeDeadline: '23:00',
+    customWindow: {
+      active: true,
+      outboundDate: '2026-09-10',
+      inboundDate: '2026-09-14',
+      earliestDeparture: '18:45',
+      homeDeadline: '22:30'
+    }
+  });
+  assert.equal(scenarios[0].outbound, '260910');
+  assert.equal(scenarios[0].inbound, '260914');
+  assert.equal(scenarios[0].earliestOutbound, '18:45');
+  assert.equal(scenarios[0].homeDeadline, '22:30');
+});
+
+test('return flight is rejected when airport transfer misses the home deadline', () => {
+  const core = loadCore();
+  const settings = {
+    maxBudget: 0,
+    minStayHours: 0,
+    earliestReturn: '',
+    homeDeadline: '23:00',
+    homeArrivalMarginMinutes: 30,
+    airportAccess: { AMS: { minutes: 90, cost: 0 } }
+  };
+  const base = { airport: 'AMS', totalPrice: 100, effectiveStayHours: 48, inboundArrival: '21:00' };
+  assert.equal(core.passesSearchFilters(base, settings), true);
+  assert.equal(core.passesSearchFilters({ ...base, inboundArrival: '21:01' }, settings), false);
+  assert.equal(core.passesSearchFilters({
+    ...base,
+    inboundArrival: '00:15',
+    inboundArrivalIso: '2026-08-25T00:15:00+02:00',
+    scenarioInbound: '260824'
+  }, settings), false);
+});
