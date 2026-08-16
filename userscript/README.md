@@ -5,7 +5,7 @@ Tampermonkey-weekendzoeker voor Skyscanner.
 ## Kanalen
 
 - `stable/Weekend-Wegwijzer.user.js`: oorspronkelijke, bevestigde versie 3.7.1.
-- `candidate/Weekend-Wegwijzer.user.js`: verbeterde testversie 4.0.2.
+- `candidate/Weekend-Wegwijzer.user.js`: verbeterde testversie 4.0.4.
 
 ## Candidate installeren
 
@@ -14,6 +14,17 @@ Open `candidate/Weekend-Wegwijzer.user.js` in Tampermonkey en vervang alleen een
 ## Controleren
 
 Gebruik `npm run validate`. Dit controleert syntax, pure zoeklogica, metadata en veiligheidsinvarianten.
+
+## 4.0.4
+
+- De standaardlijst combineert de goedkoopste optie, het langste verblijf en de beste balans.
+- De resultaatkop toont geen interne cacheteller meer.
+- De automatische thuiskomsttijd gebruikt stappen van vijf minuten en valt bij ongeldige opslag terug op 23:00.
+
+## 4.0.3
+
+- Resultaatfilters beperken zich tot prijs, verblijfsduur en luchthaven.
+- Eigen perioden tonen geen niet-ingestelde weekendtijdslimiet meer.
 
 ## 4.0.2
 

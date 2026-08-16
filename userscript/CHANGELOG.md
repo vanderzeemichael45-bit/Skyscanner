@@ -1,5 +1,17 @@
 # Wijzigingen
 
+## Candidate 4.0.4
+
+- Start met één gecombineerde lijst: goedkoopste, langste verblijf en beste balans staan bovenaan zonder dubbelen.
+- Behoud de losse sorteringen als optionele alternatieven.
+- Verwijder de technische teller `direct geladen` uit de resultaatkop.
+- Herstel ongeldige opgeslagen thuistijden naar 23:00 en gebruik stappen van vijf minuten.
+
+## Candidate 4.0.3
+
+- Verwijder de verouderde resultaatfilters `Vr → ma` en `Za → ma`.
+- Toon bij een eigen periode alleen expliciet gekozen vertrek- en thuiskomsttijden.
+
 ## Candidate 4.0.2
 
 - Laat tijdsbeperkingen bij een eigen reisperiode standaard leeg en optioneel.

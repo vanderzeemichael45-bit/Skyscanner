@@ -170,6 +170,23 @@ test('availability profile adds Thursday evening only to the final weekend of a 
   ]);
 });
 
+test('recommended order combines cheapest, longest stay and best balance without duplicates', () => {
+  const core = loadCore();
+  const result = core.sortDestinations([
+    { city: 'Cheap', airport: 'AMS', scenarioId: 'custom', outboundDeparture: '08:00', inboundDeparture: '18:00', price: 50, floorPrice: 50, floorTotalPrice: 50, stayHours: 24, effectiveStayHours: 24, rawDealValue: 10 },
+    { city: 'Long', airport: 'EIN', scenarioId: 'custom', outboundDeparture: '09:00', inboundDeparture: '19:00', price: 90, floorPrice: 90, floorTotalPrice: 90, stayHours: 80, effectiveStayHours: 80, rawDealValue: 20 },
+    { city: 'Balance', airport: 'RTM', scenarioId: 'custom', outboundDeparture: '10:00', inboundDeparture: '20:00', price: 70, floorPrice: 70, floorTotalPrice: 70, stayHours: 60, effectiveStayHours: 60, rawDealValue: 100 }
+  ], 'recommended');
+  assert.deepEqual(Array.from(result, item => item.city), ['Cheap', 'Long', 'Balance']);
+});
+
+test('home deadline accepts five-minute steps and repairs accidental minutes', () => {
+  const core = loadCore();
+  assert.equal(core.normalizeFiveMinuteTime('23:00', '22:00'), '23:00');
+  assert.equal(core.normalizeFiveMinuteTime('23:03', '23:00'), '23:00');
+  assert.equal(core.normalizeFiveMinuteTime('', '23:00'), '23:00');
+});
+
 test('automatic weekend scenarios retain the Monday home deadline', () => {
   const core = loadCore();
   const settings = { homeDeadline: '23:00' };
@@ -211,6 +228,22 @@ test('custom dates do not inherit weekend time restrictions', () => {
   });
   assert.equal(scenarios[0].earliestOutbound, '');
   assert.equal(scenarios[0].homeDeadline, '');
+});
+
+test('custom availability heading omits time limits that were not selected', () => {
+  const core = loadCore();
+  const heading = core.formatAvailability(new Date('2026-08-29T12:00:00'), {
+    homeDeadline: '23:00',
+    customWindow: {
+      active: true,
+      outboundDate: '2026-08-26',
+      inboundDate: '2026-09-02',
+      earliestDeparture: '',
+      homeDeadline: ''
+    }
+  });
+  assert.equal(heading.includes('23:00'), false);
+  assert.equal(heading.includes('vanaf'), false);
 });
 
 test('return flight is rejected when airport transfer misses the home deadline', () => {
