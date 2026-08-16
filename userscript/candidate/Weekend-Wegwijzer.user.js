@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Weekend Wegwijzer Candidate
 // @namespace    weekend-wegwijzer-candidate
-// @version      4.0.2
-// @description  Candidate 4.0.2: eigen reisperioden zonder automatische weekendtijdslimieten
+// @version      4.0.3
+// @description  Candidate 4.0.3: vereenvoudigde resultaatfilters en correcte periodekoppen
 // @match        https://www.skyscanner.nl/*
 // @grant        none
 // @run-at       document-start
@@ -3118,7 +3118,11 @@
         if (!custom?.active) return formatWeekend(saturday);
         const outbound = new Date(`${custom.outboundDate}T12:00:00`);
         const inbound = new Date(`${custom.inboundDate}T12:00:00`);
-        return `${formatDate(outbound)} ${custom.earliestDeparture ? `vanaf ${custom.earliestDeparture}` : ''} → ${formatDate(inbound)} · thuis vóór ${custom.homeDeadline || settings.homeDeadline}`;
+        return [
+            `${formatDate(outbound)}${custom.earliestDeparture ? ` vanaf ${custom.earliestDeparture}` : ''}`,
+            `→ ${formatDate(inbound)}`,
+            custom.homeDeadline ? `· thuis vóór ${custom.homeDeadline}` : ''
+        ].filter(Boolean).join(' ');
     }
 
 
@@ -3709,16 +3713,6 @@ function createResultFilters() {
     return {
         under100: false,
         over48: false,
-
-        /*
-         * Geen selectie = beide weekendtypes toegestaan.
-         *
-         * Mogelijke waarden:
-         * fri-mon
-         * sat-mon
-         */
-        weekendTypes: [],
-
         airports: []
     };
 }
@@ -3728,7 +3722,6 @@ function filtersActive(filters) {
     return (
         filters.under100 ||
         filters.over48 ||
-        filters.weekendTypes.length > 0 ||
         filters.airports.length > 0
     );
 }
@@ -3824,31 +3817,6 @@ function variantPassesResultFilters(
     if (
         filters.over48 &&
         (variant.effectiveStayHours ?? variant.stayHours) < 48
-    ) {
-        return false;
-    }
-
-
-    /*
-     * WEEKENDTYPE
-     *
-     * Geen selectie:
-     * alles toegestaan.
-     *
-     * Alleen vr-ma:
-     * alleen vrijdag-maandag.
-     *
-     * Alleen za-ma:
-     * alleen zaterdag-maandag.
-     *
-     * Beide:
-     * beide toegestaan.
-     */
-    if (
-        filters.weekendTypes.length &&
-        !filters.weekendTypes.includes(
-            variant.scenarioId
-        )
     ) {
         return false;
     }
@@ -7696,20 +7664,6 @@ function applyResultFilters(
 
                 <button
                     class="ww-filter-chip"
-                    data-weekend="fri-mon"
-                >
-                    🌅 Vr → ma
-                </button>
-
-                <button
-                    class="ww-filter-chip"
-                    data-weekend="sat-mon"
-                >
-                    🧳 Za → ma
-                </button>
-
-                <button
-                    class="ww-filter-chip"
                     data-airport="AMS"
                 >
                     AMS
@@ -7768,11 +7722,6 @@ function applyResultFilters(
                     chip.dataset
                         .airport;
 
-                const weekend =
-                    chip.dataset
-                        .weekend;
-
-
                 let active =
                     false;
 
@@ -7793,16 +7742,6 @@ function applyResultFilters(
                             .airports
                             .includes(
                                 airport
-                            );
-                }
-
-
-                if (weekend) {
-                    active =
-                        filters
-                            .weekendTypes
-                            .includes(
-                                weekend
                             );
                 }
 
@@ -7885,11 +7824,6 @@ function applyResultFilters(
                             chip.dataset
                                 .airport;
 
-                        const weekend =
-                            chip.dataset
-                                .weekend;
-
-
                         /*
                          * GEWONE FILTERS
                          */
@@ -7900,38 +7834,6 @@ function applyResultFilters(
                                 !filters[
                                     filter
                                 ];
-                        }
-
-
-                        /*
-                         * WEEKENDTYPE
-                         *
-                         * Beide mogen tegelijk actief zijn.
-                         */
-                        if (weekend) {
-                            if (
-                                filters
-                                    .weekendTypes
-                                    .includes(
-                                        weekend
-                                    )
-                            ) {
-                                filters.weekendTypes =
-                                    filters
-                                        .weekendTypes
-                                        .filter(
-                                            value =>
-                                                value !==
-                                                weekend
-                                        );
-
-                            } else {
-                                filters
-                                    .weekendTypes
-                                    .push(
-                                        weekend
-                                    );
-                            }
                         }
 
 
@@ -7990,9 +7892,6 @@ function applyResultFilters(
 
                 filters.over48 =
                     false;
-
-                filters.weekendTypes =
-                    [];
 
                 filters.airports =
                     [];
@@ -8744,7 +8643,7 @@ function applyResultFilters(
     function diagnosticSnapshot() {
         return {
             product: 'Weekend Wegwijzer',
-            version: '4.0.2',
+            version: '4.0.3',
             generatedAt: new Date().toISOString(),
             page: { origin: location.origin, path: location.pathname },
             settings: activeScan?.settings || loadSettings(),
@@ -10358,6 +10257,7 @@ function applyResultFilters(
             effectiveStayHours,
             priceModel,
             createScenarios,
+            formatAvailability,
             expectedHomeArrivalMinutes,
             passesSearchFilters,
             readCities,

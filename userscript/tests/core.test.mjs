@@ -213,6 +213,22 @@ test('custom dates do not inherit weekend time restrictions', () => {
   assert.equal(scenarios[0].homeDeadline, '');
 });
 
+test('custom availability heading omits time limits that were not selected', () => {
+  const core = loadCore();
+  const heading = core.formatAvailability(new Date('2026-08-29T12:00:00'), {
+    homeDeadline: '23:00',
+    customWindow: {
+      active: true,
+      outboundDate: '2026-08-26',
+      inboundDate: '2026-09-02',
+      earliestDeparture: '',
+      homeDeadline: ''
+    }
+  });
+  assert.equal(heading.includes('23:00'), false);
+  assert.equal(heading.includes('vanaf'), false);
+});
+
 test('return flight is rejected when airport transfer misses the home deadline', () => {
   const core = loadCore();
   const settings = {

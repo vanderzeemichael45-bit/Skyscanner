@@ -1,5 +1,10 @@
 # Wijzigingen
 
+## Candidate 4.0.3
+
+- Verwijder de verouderde resultaatfilters `Vr → ma` en `Za → ma`.
+- Toon bij een eigen periode alleen expliciet gekozen vertrek- en thuiskomsttijden.
+
 ## Candidate 4.0.2
 
 - Laat tijdsbeperkingen bij een eigen reisperiode standaard leeg en optioneel.
