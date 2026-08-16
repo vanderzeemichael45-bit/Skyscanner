@@ -1,0 +1,29 @@
+name: Validate Weekend Wegwijzer
+
+on:
+  push:
+    paths:
+      - 'userscript/**'
+      - '.github/workflows/validate-userscript.yml'
+  pull_request:
+    paths:
+      - 'userscript/**'
+      - '.github/workflows/validate-userscript.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: userscript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Candidate and Stable
+        run: npm run validate

@@ -1,0 +1,12 @@
+{
+  "name": "weekend-wegwijzer",
+  "private": true,
+  "version": "3.8.1",
+  "type": "module",
+  "scripts": {
+    "check": "node --check candidate/Weekend-Wegwijzer.user.js && node --check stable/Weekend-Wegwijzer.user.js",
+    "test": "node --test tests/*.test.mjs",
+    "audit": "node tools/audit-candidate.mjs",
+    "validate": "npm run check && npm test && npm run audit"
+  }
+}
