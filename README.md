@@ -2,6 +2,16 @@
 
 Dit is de tweede cloudtest van de Weekend Optimizer. De zoekregels zijn nog dezelfde als in de Tampermonkey-versie, maar v0.2 is vooral bedoeld om het verschil tussen je gewone browser en GitHub Actions zichtbaar te maken.
 
+## Tampermonkey: Weekend Wegwijzer
+
+Naast de Python/Playwright-radar bevat deze repository nu ook het afzonderlijke Tampermonkey-project in [`userscript/`](userscript/README.md):
+
+- Stable `3.7.1` blijft de ongewijzigde, eerder gebruikte versie.
+- Candidate `3.8.1` bevat de nieuwe worker-, cache-, diagnose- en betrouwbaarheidsverbeteringen.
+- Candidate heeft een eigen automatisch Tampermonkey-updatekanaal via GitHub.
+
+Beide implementaties blijven bewust gescheiden: de Python-radar draait in GitHub Actions, terwijl Weekend Wegwijzer in je eigen browser op Skyscanner draait.
+
 ## Wat is nieuw in v0.2?
 
 - Playwright start **Chromium in de nieuwe headless-modus** (`channel="chromium"`) in plaats van de aparte Chromium headless shell.
