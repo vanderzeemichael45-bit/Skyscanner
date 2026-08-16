@@ -1,5 +1,11 @@
 # Wijzigingen
 
+## Candidate 4.0.1
+
+- Herstel de land-naar-staduitlezing voor zowel eigen perioden als automatische weekendscans.
+- Verplaats de diagnose-resultaatsnapshot naar het echte einde van de scan.
+- Voeg een regressietest toe voor het uitlezen van steden vanaf een landpagina.
+
 ## Candidate 4.0.0
 
 - Zoek gewone weekenden vanaf vrijdag 21:30 en het laatste maandweekend al vanaf donderdag 21:30.

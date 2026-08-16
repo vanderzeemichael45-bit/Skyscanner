@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { priceModel as modulePriceModel, effectiveStayHours as moduleEffectiveStayHours } from '../src/travel-model.mjs';
 
-function loadCore({ hardwareConcurrency = 8, saveData = false, effectiveType = '4g', pageText = '', pageTitle = '' } = {}) {
+function loadCore({ hardwareConcurrency = 8, saveData = false, effectiveType = '4g', pageText = '', pageTitle = '', documentOverride = null } = {}) {
   const source = fs.readFileSync('candidate/Weekend-Wegwijzer.user.js', 'utf8');
   const storage = new Map();
   function XHR() {}
@@ -27,7 +27,7 @@ function loadCore({ hardwareConcurrency = 8, saveData = false, effectiveType = '
       setItem: (key, value) => storage.set(key, String(value))
     },
     XMLHttpRequest: XHR,
-    document: { body: { innerText: pageText }, title: pageTitle },
+    document: documentOverride || { body: { innerText: pageText }, title: pageTitle },
     __WW_TEST_MODE__: true
   };
   context.window = context;
@@ -207,4 +207,27 @@ test('return flight is rejected when airport transfer misses the home deadline',
     inboundArrivalIso: '2026-08-25T00:15:00+02:00',
     scenarioInbound: '260824'
   }, settings), false);
+});
+
+test('country page city extraction remains independent from final result snapshots', () => {
+  const container = {
+    querySelector: selector => selector === 'h2' ? { innerText: 'Rome' } : null
+  };
+  const link = {
+    closest: () => container,
+    getAttribute: name => name === 'aria-label' ? 'Vanaf € 99' : null,
+    innerText: '€ 99',
+    href: 'https://www.skyscanner.nl/transport/vluchten/ams/rome/260903/260919/'
+  };
+  const core = loadCore({
+    documentOverride: {
+      body: { innerText: '' },
+      title: '',
+      querySelectorAll: selector => selector === 'a[data-testid="flights-link"]' ? [link] : []
+    }
+  });
+  const cities = core.readCities('AMS', 'Italië');
+  assert.equal(cities.length, 1);
+  assert.equal(cities[0].city, 'Rome');
+  assert.equal(cities[0].price, 99);
 });

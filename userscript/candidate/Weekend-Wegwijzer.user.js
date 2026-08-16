@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Weekend Wegwijzer Candidate
 // @namespace    weekend-wegwijzer-candidate
-// @version      4.0.0
-// @description  Candidate 4.0.0: slimme beschikbaarheidsvensters, uiterlijk-thuisfilter en efficiënter zoeken
+// @version      4.0.1
+// @description  Candidate 4.0.1: beschikbaarheidsvensters met herstelde land- en stadsuitlezing
 // @match        https://www.skyscanner.nl/*
 // @grant        none
 // @run-at       document-start
@@ -1860,25 +1860,6 @@
                     )
             });
         }
-
-        activeScan.phase = 'complete';
-        activeScan.resultSnapshot = output.flatMap(item =>
-            item.results.slice(0, CONFIG.topCount).map(result => ({
-                weekend: weekendKey(item.saturday),
-                city: result.city,
-                country: result.country,
-                airport: result.airport,
-                scenario: result.scenarioId,
-                flightPrice: result.price,
-                totalPrice: result.totalPrice,
-                priceIncomplete: result.priceIncomplete,
-                priceVolatile: result.priceVolatile,
-                effectiveStayHours: result.effectiveStayHours,
-                outboundDeparture: result.outboundDeparture,
-                inboundArrival: result.inboundArrival,
-                expectedHomeMinutes: expectedHomeArrivalMinutes(result, settings)
-            }))
-        );
 
         return output;
     }
@@ -7362,6 +7343,25 @@ function applyResultFilters(
             });
         }
 
+        activeScan.phase = 'complete';
+        activeScan.resultSnapshot = output.flatMap(item =>
+            item.results.slice(0, CONFIG.topCount).map(result => ({
+                weekend: weekendKey(item.saturday),
+                city: result.city,
+                country: result.country,
+                airport: result.airport,
+                scenario: result.scenarioId,
+                flightPrice: result.price,
+                totalPrice: result.totalPrice,
+                priceIncomplete: result.priceIncomplete,
+                priceVolatile: result.priceVolatile,
+                effectiveStayHours: result.effectiveStayHours,
+                outboundDeparture: result.outboundDeparture,
+                inboundArrival: result.inboundArrival,
+                expectedHomeMinutes: result.expectedHomeMinutes
+            }))
+        );
+
         return output;
     }
 
@@ -8733,7 +8733,7 @@ function applyResultFilters(
     function diagnosticSnapshot() {
         return {
             product: 'Weekend Wegwijzer',
-            version: '4.0.0',
+            version: '4.0.1',
             generatedAt: new Date().toISOString(),
             page: { origin: location.origin, path: location.pathname },
             settings: activeScan?.settings || loadSettings(),
@@ -10349,6 +10349,7 @@ function applyResultFilters(
             createScenarios,
             expectedHomeArrivalMinutes,
             passesSearchFilters,
+            readCities,
             compactJsonFlights,
             parseDescriptor,
             classifyPageState,

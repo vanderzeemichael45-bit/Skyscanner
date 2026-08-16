@@ -5,7 +5,7 @@ Tampermonkey-weekendzoeker voor Skyscanner.
 ## Kanalen
 
 - `stable/Weekend-Wegwijzer.user.js`: oorspronkelijke, bevestigde versie 3.7.1.
-- `candidate/Weekend-Wegwijzer.user.js`: verbeterde testversie 4.0.0.
+- `candidate/Weekend-Wegwijzer.user.js`: verbeterde testversie 4.0.1.
 
 ## Candidate installeren
 
@@ -14,6 +14,10 @@ Open `candidate/Weekend-Wegwijzer.user.js` in Tampermonkey en vervang alleen een
 ## Controleren
 
 Gebruik `npm run validate`. Dit controleert syntax, pure zoeklogica, metadata en veiligheidsinvarianten.
+
+## 4.0.1
+
+- herstelde land- en stadsuitlezing na de introductie van diagnose-resultaatsnapshots.
 
 ## 4.0.0
 
