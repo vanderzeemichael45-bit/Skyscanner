@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Weekend Wegwijzer Candidate
 // @namespace    weekend-wegwijzer-candidate
-// @version      4.0.6
-// @description  Candidate 4.0.6: stuur een gekozen vlucht veilig door naar ReisWijzer voor de luchthavenreis
+// @version      4.0.7
+// @description  Candidate 4.0.7: open vlucht en complete luchthavenreis samen
 // @match        https://www.skyscanner.nl/*
 // @grant        none
 // @run-at       document-start
@@ -1031,6 +1031,14 @@
         const url = reisWijzerTransferUrl(result);
         if (!url) return false;
         window.open(url, '_blank', 'noopener');
+        return true;
+    }
+
+    function openCompleteTrip(result) {
+        const reisWijzerUrl = reisWijzerTransferUrl(result);
+        if (!reisWijzerUrl || !result?.link) return false;
+        openSkyscannerResult(result.link);
+        window.open(reisWijzerUrl, '_blank', 'noopener');
         return true;
     }
 
@@ -8574,7 +8582,7 @@ function applyResultFilters(
                 </div>
 
                 <button
-                    class="ww-open-reiswijzer"
+                    class="ww-open-complete-trip"
                     style="
                         width:100%;
                         margin-top:7px;
@@ -8587,7 +8595,7 @@ function applyResultFilters(
                         font-weight:700;
                     "
                 >
-                    Bereken luchthavenreis in ReisWijzer ↗
+                    Open vlucht + complete reis ↗
                 </button>
 
                 <button
@@ -8602,20 +8610,20 @@ function applyResultFilters(
                         font-weight:700;
                     "
                 >
-                    Open op Skyscanner ↗
+                    Alleen vlucht bekijken ↗
                 </button>
             </div>
         `;
 
         details
             .querySelector(
-                '.ww-open-reiswijzer'
+                '.ww-open-complete-trip'
             )
             ?.addEventListener(
                 'click',
                 event => {
                     event.stopPropagation();
-                    if (!openReisWijzerTransfer(result)) {
+                    if (!openCompleteTrip(result)) {
                         event.currentTarget.textContent = 'Vluchtgegevens zijn nog niet compleet';
                         event.currentTarget.disabled = true;
                     }

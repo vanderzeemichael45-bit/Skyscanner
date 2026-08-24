@@ -1,5 +1,10 @@
 # Wijzigingen
 
+## Candidate 4.0.7
+
+- Open vanuit één knop zowel de concrete Skyscanner-vlucht als de complete luchthavenreis in ReisWijzer.
+- Houd “Alleen vlucht bekijken” als rustige secundaire keuze.
+
 ## Candidate 4.0.6
 
 - Voeg op vluchtkaarten een knop toe om de heen- en terugreis naar de luchthaven in ReisWijzer voor te bereiden.
