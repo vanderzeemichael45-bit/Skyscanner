@@ -18,6 +18,8 @@ function loadCore({ hardwareConcurrency = 8, saveData = false, effectiveType = '
     Date,
     Math,
     Symbol,
+    TextEncoder,
+    btoa,
     setTimeout,
     clearTimeout,
     navigator: { hardwareConcurrency, connection: { saveData, effectiveType } },
@@ -168,6 +170,22 @@ test('availability profile adds Thursday evening only to the final weekend of a 
     { id: 'fri-mon', earliest: '' },
     { id: 'sat-mon', earliest: undefined }
   ]);
+});
+
+test('ReisWijzer transfer is versioned, fragment-only and rejects incomplete flights', () => {
+  const core = loadCore();
+  const flight = {
+    airport: 'EIN', city: 'Valencia', travelers: 1, floorTotalPrice: 140,
+    outboundDepartureIso: '2026-09-04T22:00:00+02:00',
+    outboundArrivalIso: '2026-09-05T00:20:00+02:00',
+    inboundDepartureIso: '2026-09-07T18:00:00+02:00',
+    inboundArrivalIso: '2026-09-07T20:10:00+02:00'
+  };
+  const payload = core.reisWijzerTransferPayload(flight);
+  assert.equal(payload.v, 1);
+  assert.equal(payload.airport, 'EIN');
+  assert.match(core.reisWijzerTransferUrl(flight), /^https:\/\/9292\.nl\/#rw-flight=/);
+  assert.equal(core.reisWijzerTransferUrl({ airport: 'EIN' }), '');
 });
 
 test('recommended order combines cheapest, longest stay and best balance without duplicates', () => {

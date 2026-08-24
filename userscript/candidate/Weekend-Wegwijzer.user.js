@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Weekend Wegwijzer Candidate
 // @namespace    weekend-wegwijzer-candidate
-// @version      4.0.5
-// @description  Candidate 4.0.5: weekendregels gelden ook bij overeenkomstige eigen datums
+// @version      4.0.6
+// @description  Candidate 4.0.6: stuur een gekozen vlucht veilig door naar ReisWijzer voor de luchthavenreis
 // @match        https://www.skyscanner.nl/*
 // @grant        none
 // @run-at       document-start
@@ -985,6 +985,53 @@
         return toInputDate(
             saturday
         );
+    }
+
+    function base64UrlEncodeUtf8(value) {
+        const bytes = new TextEncoder().encode(String(value));
+        let binary = '';
+        bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+        return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    }
+
+    function reisWijzerTransferPayload(result) {
+        const airport = String(result?.airport || '').trim().toUpperCase();
+        const outboundDepartureIso = String(result?.outboundDepartureIso || '').trim();
+        const inboundArrivalIso = String(result?.inboundArrivalIso || '').trim();
+        if (!CONFIG.airports.includes(airport) || !outboundDepartureIso || !inboundArrivalIso) return null;
+        return {
+            v: 1,
+            source: 'weekend-wegwijzer',
+            airport,
+            city: String(result?.city || '').slice(0, 100),
+            outbound: {
+                departureIso: outboundDepartureIso,
+                arrivalIso: String(result?.outboundArrivalIso || '').trim()
+            },
+            inbound: {
+                departureIso: String(result?.inboundDepartureIso || '').trim(),
+                arrivalIso: inboundArrivalIso
+            },
+            travelers: Math.max(1, Math.min(9, Number(result?.travelers) || 1)),
+            flightPrice: Number.isFinite(Number(result?.floorTotalPrice ?? result?.floorPrice))
+                ? Number(result.floorTotalPrice ?? result.floorPrice)
+                : null,
+            airportBufferMinutes: 120,
+            postLandingMinutes: 30
+        };
+    }
+
+    function reisWijzerTransferUrl(result) {
+        const payload = reisWijzerTransferPayload(result);
+        if (!payload) return '';
+        return `https://9292.nl/#rw-flight=${base64UrlEncodeUtf8(JSON.stringify(payload))}`;
+    }
+
+    function openReisWijzerTransfer(result) {
+        const url = reisWijzerTransferUrl(result);
+        if (!url) return false;
+        window.open(url, '_blank', 'noopener');
+        return true;
     }
 
 
@@ -8527,6 +8574,23 @@ function applyResultFilters(
                 </div>
 
                 <button
+                    class="ww-open-reiswijzer"
+                    style="
+                        width:100%;
+                        margin-top:7px;
+                        padding:7px;
+                        border:1px solid rgba(255,255,255,.18);
+                        border-radius:6px;
+                        cursor:pointer;
+                        color:white;
+                        background:rgba(37,99,235,.35);
+                        font-weight:700;
+                    "
+                >
+                    Bereken luchthavenreis in ReisWijzer ↗
+                </button>
+
+                <button
                     class="ww-open-result"
                     style="
                         width:100%;
@@ -8542,6 +8606,21 @@ function applyResultFilters(
                 </button>
             </div>
         `;
+
+        details
+            .querySelector(
+                '.ww-open-reiswijzer'
+            )
+            ?.addEventListener(
+                'click',
+                event => {
+                    event.stopPropagation();
+                    if (!openReisWijzerTransfer(result)) {
+                        event.currentTarget.textContent = 'Vluchtgegevens zijn nog niet compleet';
+                        event.currentTarget.disabled = true;
+                    }
+                }
+            );
 
         details
             .querySelector(
@@ -8716,7 +8795,7 @@ function applyResultFilters(
     function diagnosticSnapshot() {
         return {
             product: 'Weekend Wegwijzer',
-            version: '4.0.5',
+            version: '4.0.6',
             generatedAt: new Date().toISOString(),
             page: { origin: location.origin, path: location.pathname },
             settings: activeScan?.settings || loadSettings(),
@@ -10323,7 +10402,9 @@ function applyResultFilters(
             compactJsonFlights,
             parseDescriptor,
             classifyPageState,
-            cacheUrl
+            cacheUrl,
+            reisWijzerTransferPayload,
+            reisWijzerTransferUrl
         };
         return;
     }

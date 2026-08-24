@@ -1,5 +1,11 @@
 # Wijzigingen
 
+## Candidate 4.0.6
+
+- Voeg op vluchtkaarten een knop toe om de heen- en terugreis naar de luchthaven in ReisWijzer voor te bereiden.
+- Draag alleen gevalideerde vluchtmomenten, luchthaven, reizigers en de afzonderlijke vluchtprijs over via een compacte URL-fragmentpayload.
+- Houd de vluchtprijs strikt gescheiden van de OV-tariefberekening.
+
 ## Stable 4.0.5
 
 - Promoveer de volledig geteste Candidate 4.0.5 naar het stable updatekanaal.
