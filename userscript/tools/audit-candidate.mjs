@@ -31,7 +31,10 @@ const requirements = [
 
 const failures = requirements.filter(([, pattern]) => !pattern.test(candidate)).map(([label]) => label);
 if (candidate.includes('@grant        GM_')) failures.push('unexpected privileged GM grant');
-if (!/@version\s+3\.7\.1/.test(stable)) failures.push('stable is not original 3.7.1');
+if (!/@name\s+Weekend Wegwijzer\s*$/m.test(stable)) failures.push('stable name');
+if (!/@namespace\s+weekend-wegwijzer\s*$/m.test(stable)) failures.push('stable namespace');
+if (!/@version\s+4\.0\.5/.test(stable)) failures.push('stable is not 4.0.5');
+if (!/@updateURL\s+https:\/\/raw\.githubusercontent\.com\/vanderzeemichael45-bit\/Skyscanner\/main\/userscript\/stable\/Weekend-Wegwijzer\.user\.js/.test(stable)) failures.push('stable update URL');
 
 if (failures.length) {
   console.error(`Candidate audit failed: ${failures.join(', ')}`);
@@ -44,4 +47,4 @@ if (stableHash !== expectedStableHash) {
   console.error(`Stable changed unexpectedly: ${stableHash}`);
   process.exit(1);
 }
-console.log(`candidate audit: OK (4.0.5); stable 3.7.1 sha256 ${stableHash}`);
+console.log(`candidate audit: OK (4.0.5); stable 4.0.5 sha256 ${stableHash}`);
