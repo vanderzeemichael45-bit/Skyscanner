@@ -326,6 +326,12 @@ test('return flight is rejected when airport transfer misses the home deadline',
   }, settings), false);
 });
 
+test('home badge never presents landing margin as a real home arrival', () => {
+  const core = loadCore();
+  assert.match(core.homeTimingBadgeHtml({ expectedHomeMinutes: 1290, accessMinutes: 0 }), /OV vanaf circa 21:30/);
+  assert.match(core.homeTimingBadgeHtml({ expectedHomeMinutes: 1380, accessMinutes: 120 }), /circa 23:00 thuis/);
+});
+
 test('country page city extraction remains independent from final result snapshots', () => {
   const container = {
     querySelector: selector => selector === 'h2' ? { innerText: 'Rome' } : null

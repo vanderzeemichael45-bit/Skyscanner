@@ -3,6 +3,7 @@
 ## Candidate 4.0.8
 
 - Omzeil de browserblokkade op een tweede nieuw tabblad: de vlucht opent nieuw en het huidige tabblad gaat betrouwbaar naar ReisWijzer.
+- Noem landing plus uitstapmarge niet langer een thuiskomsttijd wanneer de OV-reistijd nog onbekend is.
 
 ## Candidate 4.0.7
 

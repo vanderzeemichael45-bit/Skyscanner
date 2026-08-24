@@ -3260,6 +3260,14 @@
         return landing + access.minutes + margin;
     }
 
+    function homeTimingBadgeHtml(result) {
+        if (!Number.isFinite(result?.expectedHomeMinutes)) return '';
+        if (Number(result.accessMinutes) > 0) {
+            return `<span title="Landing plus ingestelde reistijd naar huis en marge" style="padding:3px 6px;border-radius:5px;background:rgba(255,255,255,.07);font-size:10px">🏠 circa ${minutesToClock(result.expectedHomeMinutes)} thuis</span>`;
+        }
+        return `<span title="De OV-reistijd naar Sneek Noord wordt exact berekend in ReisWijzer" style="padding:3px 6px;border-radius:5px;background:rgba(245,158,11,.18);font-size:10px">🚉 OV vanaf circa ${minutesToClock(result.expectedHomeMinutes)} · thuistijd via ReisWijzer</span>`;
+    }
+
 
     function enrichFlight(
         flight,
@@ -8309,9 +8317,7 @@ function applyResultFilters(
                     }
                 </span>
 
-                <span title="Landing plus ingestelde reistijd naar huis en marge" style="padding:3px 6px;border-radius:5px;background:rgba(255,255,255,.07);font-size:10px">
-                    🏠 circa ${minutesToClock(result.expectedHomeMinutes)} thuis
-                </span>
+                ${homeTimingBadgeHtml(result)}
 
                 ${
                     priceChangeHtml(
@@ -10408,6 +10414,7 @@ function applyResultFilters(
             createScenarios,
             formatAvailability,
             expectedHomeArrivalMinutes,
+            homeTimingBadgeHtml,
             passesSearchFilters,
             readCities,
             compactJsonFlights,

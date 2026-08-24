@@ -18,6 +18,7 @@ Gebruik `npm run validate`. Dit controleert syntax, pure zoeklogica, metadata en
 ## 4.0.8
 
 - De vlucht opent in een nieuw tabblad en het huidige tabblad schakelt naar ReisWijzer, zodat een pop-upblokkade nooit de tweede pagina tegenhoudt.
+- Zonder bekende luchthavenreistijd toont Weekend Wegwijzer eerlijk vanaf wanneer OV mogelijk is; ReisWijzer berekent daarna de echte thuiskomsttijd.
 
 ## 4.0.7
 
