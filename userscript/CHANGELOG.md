@@ -1,5 +1,10 @@
 # Wijzigingen
 
+## Stable 4.0.5
+
+- Promoveer de volledig geteste Candidate 4.0.5 naar het stable updatekanaal.
+- Behoud Candidate 4.0.5 als afzonderlijk testkanaal voor toekomstige wijzigingen.
+
 ## Candidate 4.0.5
 
 - Herken vrijdag–maandag en zaterdag–maandag ook binnen `Eigen periode` als weekend.
