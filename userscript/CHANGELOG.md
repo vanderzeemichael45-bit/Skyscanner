@@ -1,5 +1,26 @@
 # Wijzigingen
 
+## Candidate 4.0.9
+
+- Laat “komend weekend” en kalenderzoekopdrachten nooit meer een eerder gebruikte eigen periode erven.
+- Toon bij een onbekende luchthavenrit alleen het OV-startmoment en laat ReisWijzer de echte thuiskomst berekenen.
+
+## Candidate 4.0.8
+
+- Omzeil de browserblokkade op een tweede nieuw tabblad: de vlucht opent nieuw en het huidige tabblad gaat betrouwbaar naar ReisWijzer.
+- Noem landing plus uitstapmarge niet langer een thuiskomsttijd wanneer de OV-reistijd nog onbekend is.
+
+## Candidate 4.0.7
+
+- Open vanuit één knop zowel de concrete Skyscanner-vlucht als de complete luchthavenreis in ReisWijzer.
+- Houd “Alleen vlucht bekijken” als rustige secundaire keuze.
+
+## Candidate 4.0.6
+
+- Voeg op vluchtkaarten een knop toe om de heen- en terugreis naar de luchthaven in ReisWijzer voor te bereiden.
+- Draag alleen gevalideerde vluchtmomenten, luchthaven, reizigers en de afzonderlijke vluchtprijs over via een compacte URL-fragmentpayload.
+- Houd de vluchtprijs strikt gescheiden van de OV-tariefberekening.
+
 ## Stable 4.0.5
 
 - Promoveer de volledig geteste Candidate 4.0.5 naar het stable updatekanaal.

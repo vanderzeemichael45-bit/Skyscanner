@@ -18,6 +18,8 @@ function loadCore({ hardwareConcurrency = 8, saveData = false, effectiveType = '
     Date,
     Math,
     Symbol,
+    TextEncoder,
+    btoa,
     setTimeout,
     clearTimeout,
     navigator: { hardwareConcurrency, connection: { saveData, effectiveType } },
@@ -170,6 +172,31 @@ test('availability profile adds Thursday evening only to the final weekend of a 
   ]);
 });
 
+test('ReisWijzer transfer is versioned, fragment-only and rejects incomplete flights', () => {
+  const core = loadCore();
+  const flight = {
+    airport: 'EIN', city: 'Valencia', travelers: 1, floorTotalPrice: 140,
+    outboundDepartureIso: '2026-09-04T22:00:00+02:00',
+    outboundArrivalIso: '2026-09-05T00:20:00+02:00',
+    inboundDepartureIso: '2026-09-07T18:00:00+02:00',
+    inboundArrivalIso: '2026-09-07T20:10:00+02:00'
+  };
+  const payload = core.reisWijzerTransferPayload(flight);
+  assert.equal(payload.v, 1);
+  assert.equal(payload.airport, 'EIN');
+  assert.match(core.reisWijzerTransferUrl(flight), /^https:\/\/9292\.nl\/#rw-flight=/);
+  assert.equal(core.reisWijzerTransferUrl({ airport: 'EIN' }), '');
+});
+
+test('primary flight action opens Skyscanner and ReisWijzer together', () => {
+  const source = fs.readFileSync('candidate/Weekend-Wegwijzer.user.js', 'utf8');
+  assert.match(source, /function openCompleteTrip\(result\)/);
+  assert.match(source, /openSkyscannerResult\(result\.link\)[\s\S]*?window\.location\.href = reisWijzerUrl/);
+  assert.match(source, /Open vlucht \+ complete reis/);
+  assert.match(source, /Alleen vlucht bekijken/);
+  assert.match(source, /@grant\s+none/);
+});
+
 test('recommended order combines cheapest, longest stay and best balance without duplicates', () => {
   const core = loadCore();
   const result = core.sortDestinations([
@@ -228,6 +255,15 @@ test('custom dates do not inherit weekend time restrictions', () => {
   });
   assert.equal(scenarios[0].earliestOutbound, '');
   assert.equal(scenarios[0].homeDeadline, '');
+});
+
+test('automatic weekend actions explicitly disable a stored custom period', () => {
+  const source = fs.readFileSync('candidate/Weekend-Wegwijzer.user.js', 'utf8');
+  assert.match(source, /function readAutomaticSettingsFromForm\(panel\)[\s\S]*?active: false/);
+  assert.match(source, /#ww-start[\s\S]*?readAutomaticSettingsFromForm/);
+  assert.match(source, /#ww-six-weekends[\s\S]*?readAutomaticSettingsFromForm/);
+  assert.match(source, /#ww-month-start[\s\S]*?readAutomaticSettingsFromForm/);
+  assert.match(source, /const customSettings = readSettingsFromForm\(panel\)/);
 });
 
 test('custom Friday to Monday dates inherit normal weekend restrictions', () => {
@@ -297,6 +333,12 @@ test('return flight is rejected when airport transfer misses the home deadline',
     inboundArrivalIso: '2026-08-25T00:15:00+02:00',
     scenarioInbound: '260824'
   }, settings), false);
+});
+
+test('home badge never presents landing margin as a real home arrival', () => {
+  const core = loadCore();
+  assert.match(core.homeTimingBadgeHtml({ expectedHomeMinutes: 1290, accessMinutes: 0 }), /OV vanaf circa 21:30/);
+  assert.match(core.homeTimingBadgeHtml({ expectedHomeMinutes: 1380, accessMinutes: 120 }), /circa 23:00 thuis/);
 });
 
 test('country page city extraction remains independent from final result snapshots', () => {

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Weekend Wegwijzer Candidate
 // @namespace    weekend-wegwijzer-candidate
-// @version      4.0.5
-// @description  Candidate 4.0.5: weekendregels gelden ook bij overeenkomstige eigen datums
+// @version      4.0.9
+// @description  Candidate 4.0.9: houd komend weekend en eigen datums strikt gescheiden
 // @match        https://www.skyscanner.nl/*
 // @grant        none
 // @run-at       document-start
@@ -985,6 +985,64 @@
         return toInputDate(
             saturday
         );
+    }
+
+    function base64UrlEncodeUtf8(value) {
+        const bytes = new TextEncoder().encode(String(value));
+        let binary = '';
+        bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+        return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    }
+
+    function reisWijzerTransferPayload(result) {
+        const airport = String(result?.airport || '').trim().toUpperCase();
+        const outboundDepartureIso = String(result?.outboundDepartureIso || '').trim();
+        const inboundArrivalIso = String(result?.inboundArrivalIso || '').trim();
+        if (!CONFIG.airports.includes(airport) || !outboundDepartureIso || !inboundArrivalIso) return null;
+        return {
+            v: 1,
+            source: 'weekend-wegwijzer',
+            airport,
+            city: String(result?.city || '').slice(0, 100),
+            outbound: {
+                departureIso: outboundDepartureIso,
+                arrivalIso: String(result?.outboundArrivalIso || '').trim()
+            },
+            inbound: {
+                departureIso: String(result?.inboundDepartureIso || '').trim(),
+                arrivalIso: inboundArrivalIso
+            },
+            travelers: Math.max(1, Math.min(9, Number(result?.travelers) || 1)),
+            flightPrice: Number.isFinite(Number(result?.floorTotalPrice ?? result?.floorPrice))
+                ? Number(result.floorTotalPrice ?? result.floorPrice)
+                : null,
+            airportBufferMinutes: 120,
+            postLandingMinutes: 30
+        };
+    }
+
+    function reisWijzerTransferUrl(result) {
+        const payload = reisWijzerTransferPayload(result);
+        if (!payload) return '';
+        return `https://9292.nl/#rw-flight=${base64UrlEncodeUtf8(JSON.stringify(payload))}`;
+    }
+
+    function openReisWijzerTransfer(result) {
+        const url = reisWijzerTransferUrl(result);
+        if (!url) return false;
+        window.open(url, '_blank', 'noopener');
+        return true;
+    }
+
+    function openCompleteTrip(result) {
+        const reisWijzerUrl = reisWijzerTransferUrl(result);
+        if (!reisWijzerUrl || !result?.link) return false;
+        // Browsers blokkeren vaak de tweede window.open vanuit één klik.
+        // Open daarom de vlucht in een nieuw tabblad en gebruik het huidige
+        // Weekend Wegwijzer-tabblad voor ReisWijzer: zo zijn beide zeker open.
+        openSkyscannerResult(result.link);
+        window.location.href = reisWijzerUrl;
+        return true;
     }
 
 
@@ -3202,6 +3260,14 @@
         return landing + access.minutes + margin;
     }
 
+    function homeTimingBadgeHtml(result) {
+        if (!Number.isFinite(result?.expectedHomeMinutes)) return '';
+        if (Number(result.accessMinutes) > 0) {
+            return `<span title="Landing plus ingestelde reistijd naar huis en marge" style="padding:3px 6px;border-radius:5px;background:rgba(255,255,255,.07);font-size:10px">🏠 circa ${minutesToClock(result.expectedHomeMinutes)} thuis</span>`;
+        }
+        return `<span title="De OV-reistijd naar Sneek Noord wordt exact berekend in ReisWijzer" style="padding:3px 6px;border-radius:5px;background:rgba(245,158,11,.18);font-size:10px">🚉 OV vanaf circa ${minutesToClock(result.expectedHomeMinutes)} · thuistijd via ReisWijzer</span>`;
+    }
+
 
     function enrichFlight(
         flight,
@@ -5335,6 +5401,16 @@ function applyResultFilters(
         return settings;
     }
 
+    function readAutomaticSettingsFromForm(panel) {
+        const settings = readSettingsFromForm(panel);
+        settings.customWindow = {
+            ...(settings.customWindow || {}),
+            active: false
+        };
+        saveSettings(settings);
+        return settings;
+    }
+
 
     /* ============================================================
        FAVORIETEN STARTSCHERM
@@ -5685,7 +5761,7 @@ function applyResultFilters(
                     startSingleScan(
                         saturday,
 
-                        readSettingsFromForm(
+                        readAutomaticSettingsFromForm(
                             panel
                         )
                     );
@@ -5736,7 +5812,7 @@ function applyResultFilters(
                                 .multiWeekendCount
                         ),
 
-                        readSettingsFromForm(
+                        readAutomaticSettingsFromForm(
                             panel
                         ),
 
@@ -5779,7 +5855,7 @@ function applyResultFilters(
                             month - 1
                         ),
 
-                        readSettingsFromForm(
+                        readAutomaticSettingsFromForm(
                             panel
                         ),
 
@@ -8251,9 +8327,7 @@ function applyResultFilters(
                     }
                 </span>
 
-                <span title="Landing plus ingestelde reistijd naar huis en marge" style="padding:3px 6px;border-radius:5px;background:rgba(255,255,255,.07);font-size:10px">
-                    🏠 circa ${minutesToClock(result.expectedHomeMinutes)} thuis
-                </span>
+                ${homeTimingBadgeHtml(result)}
 
                 ${
                     priceChangeHtml(
@@ -8527,6 +8601,23 @@ function applyResultFilters(
                 </div>
 
                 <button
+                    class="ww-open-complete-trip"
+                    style="
+                        width:100%;
+                        margin-top:7px;
+                        padding:7px;
+                        border:1px solid rgba(255,255,255,.18);
+                        border-radius:6px;
+                        cursor:pointer;
+                        color:white;
+                        background:rgba(37,99,235,.35);
+                        font-weight:700;
+                    "
+                >
+                    Open vlucht + complete reis ↗
+                </button>
+
+                <button
                     class="ww-open-result"
                     style="
                         width:100%;
@@ -8538,10 +8629,25 @@ function applyResultFilters(
                         font-weight:700;
                     "
                 >
-                    Open op Skyscanner ↗
+                    Alleen vlucht bekijken ↗
                 </button>
             </div>
         `;
+
+        details
+            .querySelector(
+                '.ww-open-complete-trip'
+            )
+            ?.addEventListener(
+                'click',
+                event => {
+                    event.stopPropagation();
+                    if (!openCompleteTrip(result)) {
+                        event.currentTarget.textContent = 'Vluchtgegevens zijn nog niet compleet';
+                        event.currentTarget.disabled = true;
+                    }
+                }
+            );
 
         details
             .querySelector(
@@ -8716,7 +8822,7 @@ function applyResultFilters(
     function diagnosticSnapshot() {
         return {
             product: 'Weekend Wegwijzer',
-            version: '4.0.5',
+            version: '4.0.6',
             generatedAt: new Date().toISOString(),
             page: { origin: location.origin, path: location.pathname },
             settings: activeScan?.settings || loadSettings(),
@@ -10318,12 +10424,15 @@ function applyResultFilters(
             createScenarios,
             formatAvailability,
             expectedHomeArrivalMinutes,
+            homeTimingBadgeHtml,
             passesSearchFilters,
             readCities,
             compactJsonFlights,
             parseDescriptor,
             classifyPageState,
-            cacheUrl
+            cacheUrl,
+            reisWijzerTransferPayload,
+            reisWijzerTransferUrl
         };
         return;
     }
