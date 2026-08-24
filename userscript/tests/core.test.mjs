@@ -191,7 +191,7 @@ test('ReisWijzer transfer is versioned, fragment-only and rejects incomplete fli
 test('primary flight action opens Skyscanner and ReisWijzer together', () => {
   const source = fs.readFileSync('candidate/Weekend-Wegwijzer.user.js', 'utf8');
   assert.match(source, /function openCompleteTrip\(result\)/);
-  assert.match(source, /openSkyscannerResult\(result\.link\)[\s\S]*?window\.open\(reisWijzerUrl/);
+  assert.match(source, /openSkyscannerResult\(result\.link\)[\s\S]*?window\.location\.href = reisWijzerUrl/);
   assert.match(source, /Open vlucht \+ complete reis/);
   assert.match(source, /Alleen vlucht bekijken/);
   assert.match(source, /@grant\s+none/);

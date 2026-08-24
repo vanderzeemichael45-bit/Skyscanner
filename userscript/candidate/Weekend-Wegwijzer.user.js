@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Weekend Wegwijzer Candidate
 // @namespace    weekend-wegwijzer-candidate
-// @version      4.0.7
-// @description  Candidate 4.0.7: open vlucht en complete luchthavenreis samen
+// @version      4.0.8
+// @description  Candidate 4.0.8: open vlucht en complete luchthavenreis betrouwbaar in twee tabbladen
 // @match        https://www.skyscanner.nl/*
 // @grant        none
 // @run-at       document-start
@@ -1037,8 +1037,11 @@
     function openCompleteTrip(result) {
         const reisWijzerUrl = reisWijzerTransferUrl(result);
         if (!reisWijzerUrl || !result?.link) return false;
+        // Browsers blokkeren vaak de tweede window.open vanuit één klik.
+        // Open daarom de vlucht in een nieuw tabblad en gebruik het huidige
+        // Weekend Wegwijzer-tabblad voor ReisWijzer: zo zijn beide zeker open.
         openSkyscannerResult(result.link);
-        window.open(reisWijzerUrl, '_blank', 'noopener');
+        window.location.href = reisWijzerUrl;
         return true;
     }
 

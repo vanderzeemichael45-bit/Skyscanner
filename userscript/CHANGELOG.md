@@ -1,5 +1,9 @@
 # Wijzigingen
 
+## Candidate 4.0.8
+
+- Omzeil de browserblokkade op een tweede nieuw tabblad: de vlucht opent nieuw en het huidige tabblad gaat betrouwbaar naar ReisWijzer.
+
 ## Candidate 4.0.7
 
 - Open vanuit één knop zowel de concrete Skyscanner-vlucht als de complete luchthavenreis in ReisWijzer.
