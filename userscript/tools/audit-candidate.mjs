@@ -7,7 +7,7 @@ const stable = fs.readFileSync('stable/Weekend-Wegwijzer.user.js', 'utf8').repla
 const requirements = [
   ['candidate name', /@name\s+Weekend Wegwijzer Candidate/],
   ['candidate namespace', /@namespace\s+weekend-wegwijzer-candidate/],
-  ['candidate version', /@version\s+4\.0\.8/],
+  ['candidate version', /@version\s+4\.0\.9/],
   ['candidate update URL', /@updateURL\s+https:\/\/raw\.githubusercontent\.com\/vanderzeemichael45-bit\/Skyscanner\/main\/userscript\/candidate\/Weekend-Wegwijzer\.user\.js/],
   ['Skyscanner scope', /@match\s+https:\/\/www\.skyscanner\.nl\/\*/],
   ['document-start', /@run-at\s+document-start/],
@@ -48,4 +48,4 @@ if (stableHash !== expectedStableHash) {
   console.error(`Stable changed unexpectedly: ${stableHash}`);
   process.exit(1);
 }
-console.log(`candidate audit: OK (4.0.8); stable 4.0.5 sha256 ${stableHash}`);
+console.log(`candidate audit: OK (4.0.9); stable 4.0.5 sha256 ${stableHash}`);

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Weekend Wegwijzer Candidate
 // @namespace    weekend-wegwijzer-candidate
-// @version      4.0.8
-// @description  Candidate 4.0.8: open vlucht en complete luchthavenreis betrouwbaar in twee tabbladen
+// @version      4.0.9
+// @description  Candidate 4.0.9: houd komend weekend en eigen datums strikt gescheiden
 // @match        https://www.skyscanner.nl/*
 // @grant        none
 // @run-at       document-start
@@ -5401,6 +5401,16 @@ function applyResultFilters(
         return settings;
     }
 
+    function readAutomaticSettingsFromForm(panel) {
+        const settings = readSettingsFromForm(panel);
+        settings.customWindow = {
+            ...(settings.customWindow || {}),
+            active: false
+        };
+        saveSettings(settings);
+        return settings;
+    }
+
 
     /* ============================================================
        FAVORIETEN STARTSCHERM
@@ -5751,7 +5761,7 @@ function applyResultFilters(
                     startSingleScan(
                         saturday,
 
-                        readSettingsFromForm(
+                        readAutomaticSettingsFromForm(
                             panel
                         )
                     );
@@ -5802,7 +5812,7 @@ function applyResultFilters(
                                 .multiWeekendCount
                         ),
 
-                        readSettingsFromForm(
+                        readAutomaticSettingsFromForm(
                             panel
                         ),
 
@@ -5845,7 +5855,7 @@ function applyResultFilters(
                             month - 1
                         ),
 
-                        readSettingsFromForm(
+                        readAutomaticSettingsFromForm(
                             panel
                         ),
 

@@ -1,5 +1,10 @@
 # Wijzigingen
 
+## Candidate 4.0.9
+
+- Laat “komend weekend” en kalenderzoekopdrachten nooit meer een eerder gebruikte eigen periode erven.
+- Toon bij een onbekende luchthavenrit alleen het OV-startmoment en laat ReisWijzer de echte thuiskomst berekenen.
+
 ## Candidate 4.0.8
 
 - Omzeil de browserblokkade op een tweede nieuw tabblad: de vlucht opent nieuw en het huidige tabblad gaat betrouwbaar naar ReisWijzer.

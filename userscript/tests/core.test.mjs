@@ -257,6 +257,15 @@ test('custom dates do not inherit weekend time restrictions', () => {
   assert.equal(scenarios[0].homeDeadline, '');
 });
 
+test('automatic weekend actions explicitly disable a stored custom period', () => {
+  const source = fs.readFileSync('candidate/Weekend-Wegwijzer.user.js', 'utf8');
+  assert.match(source, /function readAutomaticSettingsFromForm\(panel\)[\s\S]*?active: false/);
+  assert.match(source, /#ww-start[\s\S]*?readAutomaticSettingsFromForm/);
+  assert.match(source, /#ww-six-weekends[\s\S]*?readAutomaticSettingsFromForm/);
+  assert.match(source, /#ww-month-start[\s\S]*?readAutomaticSettingsFromForm/);
+  assert.match(source, /const customSettings = readSettingsFromForm\(panel\)/);
+});
+
 test('custom Friday to Monday dates inherit normal weekend restrictions', () => {
   const core = loadCore();
   const scenarios = core.createScenarios(new Date('2026-09-05T12:00:00'), {
